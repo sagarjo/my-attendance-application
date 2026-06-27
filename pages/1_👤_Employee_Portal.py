@@ -35,7 +35,6 @@ st.title("Attendance Portal")
 supabase = get_supabase_client()
 
 # --- Multi-Tenant Context Isolation Selectors ---
-# FIXED: Using shift_start_time and shift_end_time matching the exact columns in the organization table
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -47,7 +46,6 @@ org_map = {o['name']: o for o in orgs}
 selected_org_name = st.selectbox("Verify Organization", list(org_map.keys()))
 selected_org = org_map[selected_org_name]
 
-# Fetch employees linked to the selected tenant
 emp_response = supabase.table("employees").select("id, name, pin").eq("organization_id", selected_org['id']).execute()
 employees = emp_response.data or []
 
@@ -87,7 +85,6 @@ if pin_input and pin_input == selected_emp['pin']:
     total_wh = 0.0
     deficit_hours = 0.0
     
-    # FIXED: Extracting shift properties from organization columns matching your database structure
     shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
     shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
     
@@ -97,32 +94,41 @@ if pin_input and pin_input == selected_emp['pin']:
     
     df_logs = pd.DataFrame(logs_data)
     if not df_logs.empty:
-        df_logs['dt'] = pd.to_datetime(df_logs['timestamp'])
-        df_logs['date'] = df_logs['dt'].dt.date
-        worked_days_set = set(df_logs['date'].dt.day.unique())
+        # FIXED: Enforced strict datetime serialization via Pandas with UTC normalization parameters
+        df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
         
-        for day_date, group in df_logs.groupby('date'):
-            day_hours = 0.0
-            last_in = None
-            sorted_group = group.sort_values('dt')
+        # Strip rows that failed parsing to prevent unexpected string conversion behavior
+        df_logs = df_logs.dropna(subset=['dt'])
+        
+        if not df_logs.empty:
+            df_logs['date'] = df_logs['dt'].dt.date
+            worked_days_set = set(df_logs['date'].dt.day.unique())
             
-            for _, row in sorted_group.iterrows():
-                if row['action'] == 'IN':
-                    last_in = row['dt']
-                    if row['dt'].time() > org_start:
-                        late_ins += 1
-                elif row['action'] == 'OUT' and last_in is not None:
-                    day_hours += (row['dt'] - last_in).total_seconds() / 3600.0
-                    last_in = None
-                    if row['dt'].time() < org_end:
-                        early_outs += 1
-                        
-            daily_durations[day_date.day] = day_hours
-            total_wh += day_hours
-            if 0 < day_hours < 4.0:
-                half_days += 1
-            if day_hours < 8.0:
-                deficit_hours += (8.0 - day_hours)
+            for day_date, group in df_logs.groupby('date'):
+                day_hours = 0.0
+                last_in = None
+                sorted_group = group.sort_values('dt')
+                
+                for _, row in sorted_group.iterrows():
+                    # Handle comparison against timezone-aware localized values
+                    log_time = row['dt'].time()
+                    
+                    if row['action'] == 'IN':
+                        last_in = row['dt']
+                        if log_time > org_start:
+                            late_ins += 1
+                    elif row['action'] == 'OUT' and last_in is not None:
+                        day_hours += (row['dt'] - last_in).total_seconds() / 3600.0
+                        last_in = None
+                        if log_time < org_end:
+                            early_outs += 1
+                            
+                daily_durations[day_date.day] = day_hours
+                total_wh += day_hours
+                if 0 < day_hours < 4.0:
+                    half_days += 1
+                if day_hours < 8.0:
+                    deficit_hours += (8.0 - day_hours)
 
     days_worked = len(worked_days_set)
     avg_wh = round(total_wh / days_worked, 2) if days_worked > 0 else 0.0
