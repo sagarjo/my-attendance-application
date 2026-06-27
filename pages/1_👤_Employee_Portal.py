@@ -35,8 +35,8 @@ st.title("Attendance Portal")
 supabase = get_supabase_client()
 
 # --- Multi-Tenant Context Isolation Selectors ---
-# FIXED: Removed non-existent job_start_time / job_end_time from the organizations table selection
-org_response = supabase.table("organizations").select("id, name, work_week").execute()
+# FIXED: Using shift_start_time and shift_end_time matching the exact columns in the organization table
+org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
 if not orgs:
@@ -47,8 +47,8 @@ org_map = {o['name']: o for o in orgs}
 selected_org_name = st.selectbox("Verify Organization", list(org_map.keys()))
 selected_org = org_map[selected_org_name]
 
-# FIXED: Fetch shift overrides directly from the employee record schema targets
-emp_response = supabase.table("employees").select("id, name, pin, job_start_time, job_end_time").eq("organization_id", selected_org['id']).execute()
+# Fetch employees linked to the selected tenant
+emp_response = supabase.table("employees").select("id, name, pin").eq("organization_id", selected_org['id']).execute()
 employees = emp_response.data or []
 
 if not employees:
@@ -72,7 +72,7 @@ if pin_input and pin_input == selected_emp['pin']:
     start_date = date(curr_year, curr_month, 1)
     end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
     
-    # Fetch log data structures
+    # Query database records
     logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
     leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
     
@@ -87,12 +87,12 @@ if pin_input and pin_input == selected_emp['pin']:
     total_wh = 0.0
     deficit_hours = 0.0
     
-    # FIXED: Extracting time data elements out of the selected employee metadata safely
-    emp_start_str = selected_emp.get('job_start_time') or '09:00:00'
-    emp_end_str = selected_emp.get('job_end_time') or '18:00:00'
+    # FIXED: Extracting shift properties from organization columns matching your database structure
+    shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
+    shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
     
-    org_start = datetime.strptime(emp_start_str, "%H:%M:%S").time()
-    org_end = datetime.strptime(emp_end_str, "%H:%M:%S").time()
+    org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
+    org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
     allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5]
     
     df_logs = pd.DataFrame(logs_data)
@@ -144,7 +144,7 @@ if pin_input and pin_input == selected_emp['pin']:
                 approved_leave_days.add(curr_step.day)
             curr_step += timedelta(days=1)
             
-    # Calculate real Absents dynamically
+    # Calculate Absents dynamically
     absents = 0
     for d in range(1, now.day + 1):
         check_dt = date(curr_year, curr_month, d)
@@ -154,7 +154,7 @@ if pin_input and pin_input == selected_emp['pin']:
             if d not in worked_days_set and d not in approved_leave_days:
                 absents += 1
 
-    # Tab System Views Navigation
+    # Navigation Tabs
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
     
     with tab_summary:
@@ -179,7 +179,7 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Build Calendar Matrix Layout
+        # Build Grid Calendar
         cal = calendar.monthcalendar(curr_year, curr_month)
         cal_html = '<div class="calendar-grid">'
         for d_name in ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]:
@@ -249,7 +249,7 @@ if pin_input and pin_input == selected_emp['pin']:
                 'from_date': 'From', 'to_date': 'To', 'no_of_days': 'Days', 
                 'leave_reason': 'Reason', 'is_approved': 'Approved'
             })
-            st.dataframe(df_history, use_container_width=True, hide_index=True)
+            st.dataframe(df_history, width='stretch', hide_index=True)
         else:
             st.info("No historical logs recorded yet.")
 
