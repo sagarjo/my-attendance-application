@@ -1,5 +1,5 @@
 import streamlit as st
-from database import get_organizations, get_employees_by_org, verify_pin, get_last_log_today, log_attendance
+from database import get_organizations, get_employees_by_org
 
 st.set_page_config(page_title="Attendance Kiosk", page_icon="🏢", layout="centered")
 
