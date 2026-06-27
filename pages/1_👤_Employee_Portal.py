@@ -1,260 +1,263 @@
 import streamlit as st
+import datetime
 import pandas as pd
-from datetime import datetime, time, timedelta, date
 import calendar
-from database import get_supabase_client
+from database import supabase  # Centralized Supabase client instance
 
-# Page Config
-st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
+st.set_page_config(page_title="Personal Identity Dashboard", layout="centered")
 
-# Mobile-Responsive CSS Grid Styling
+# --- MOBILE COMPLIANT GRID SYSTEM & CALENDAR CLASS INJECTION ---
 st.markdown("""
 <style>
-    .metric-container { display: flex; flex-wrap: nowrap; gap: 10px; margin-bottom: 20px; width: 100%; }
-    .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 12px 6px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .metric-val { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
-    .metric-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .bg-absent { background-color: #FFF0F2; color: #DC2626; }
-    .bg-leave { background-color: #F3E8FF; color: #7C3AED; }
-    .bg-half { background-color: #FFF7ED; color: #EA580C; }
-    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 10px 4px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .sub-metric-card .icon-val { font-size: 14px; font-weight: 700; color: #111827; }
-    .sub-metric-card .label { color: #6B7280; font-size: 11px; margin-top: 2px; }
-    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; width: 100%; }
-    .calendar-header { font-weight: 700; font-size: 11px; color: #4B5563; padding-bottom: 8px; text-transform: uppercase; }
-    .calendar-day { 
-        padding: 8px 0px; font-size: 14px; font-weight: 600; color: #111827 !important; border-radius: 8px; 
-        display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; 
-        background-color: #F9FAFB; box-shadow: inset 0 0 0 1px #E5E7EB;
+    .mobile-grid-container {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
     }
-    .day-today { background-color: #00E5FF !important; color: #000000 !important; font-weight: 700; box-shadow: none; }
-    .cal-dot-container { display: flex; gap: 3px; justify-content: center; align-items: center; margin-top: 4px; height: 6px; }
-    .cal-dot { height: 6px; width: 6px; background-color: #10B981; border-radius: 50%; }
-    .cal-dot-absent { height: 6px; width: 6px; background-color: #DC2626; border-radius: 50%; }
-    .cal-dot-leave { height: 6px; width: 6px; background-color: #7C3AED; border-radius: 50%; }
-    .cal-dot-holiday { height: 6px; width: 6px; background-color: #9CA3AF; border-radius: 50%; }
+    .metric-card {
+        background-color: #1E293B;
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+        border: 1px solid #334155;
+    }
+    .metric-title {
+        font-size: 11px;
+        color: #94A3B8;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .metric-value {
+        font-size: 18px;
+        color: #F8FAFC;
+        font-weight: bold;
+        margin-top: 4px;
+    }
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        text-align: center;
+    }
+    .calendar-header-cell {
+        font-weight: bold;
+        font-size: 12px;
+        color: #64748B;
+        padding: 4px;
+    }
+    .calendar-day-box {
+        background-color: #0F172A;
+        border: 1px solid #1E293B;
+        border-radius: 6px;
+        min-height: 55px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px;
+        position: relative;
+    }
+    .day-number {
+        font-size: 12px;
+        font-weight: 500;
+        color: #E2E8F0;
+    }
+    .status-dot-container {
+        display: flex;
+        gap: 3px;
+        justify-content: center;
+        align-items: center;
+        margin-top: 4px;
+    }
+    .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-active { background-color: #10B981; }  /* Green: Worked */
+    .dot-leave { background-color: #3B82F6; }   /* Blue: Approved Leave */
+    .dot-weekoff { background-color: #64748B; } /* Gray: Week-Off */
+    .dot-system { background-color: #F59E0B; }  /* Yellow: Auto Timeout */
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Attendance Portal")
-supabase = get_supabase_client()
+st.title("👤 Employee Portal & Self-Service Desk")
+st.markdown("---")
 
-# Selector block context matching app.py multi-tenancy requirements
-org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
-orgs = org_response.data or []
+# Secure Authorization Verification
+pin_auth = st.sidebar.text_input("Enter 4-Digit Identity PIN to Access Portal", type="password")
 
-if not orgs:
-    st.warning("No organizations configured.")
-    st.stop()
-
-org_map = {o['name']: o for o in orgs}
-selected_org_name = st.selectbox("Verify Organization", list(org_map.keys()))
-selected_org = org_map[selected_org_name]
-
-emp_response = supabase.table("employees").select("id, name, pin").eq("organization_id", selected_org['id']).execute()
-employees = emp_response.data or []
-
-if not employees:
-    st.info("No employee profiles found.")
-    st.stop()
-
-emp_map = {e['name']: e for e in employees}
-selected_emp_name = st.selectbox("Select Your Profile", list(emp_map.keys()))
-selected_emp = emp_map[selected_emp_name]
-
-pin_input = st.text_input("Confirm PIN Access", type="password", max_chars=4)
-
-if pin_input and pin_input == selected_emp['pin']:
-    st.success(f"Verified Profile: {selected_emp['name']}")
+if not pin_auth:
+    st.info("Awaiting personal identity verification via the sidebar entry credential field.")
+else:
+    # Fetch Employee Record along with relational organization constraints
+    emp_res = supabase.table("employees")\
+        .select("*, organizations(shift_start_time, shift_end_time, work_week)")\
+        .eq("pin", pin_auth).execute()
     
-    now = datetime.now()
-    curr_year, curr_month = now.year, now.month
-    start_date = date(curr_year, curr_month, 1)
-    end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
-    
-    logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
-    leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
-    
-    logs_data = logs_res.data or []
-    leaves_data = leaves_res.data or []
-    
-    worked_days_set = set()
-    daily_durations = {}
-    late_ins = 0
-    early_outs = 0
-    half_days = 0
-    total_wh = 0.0
-    deficit_hours = 0.0
-    
-    shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
-    shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
-    org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
-    org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
-    allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5]
-    
-    df_logs = pd.DataFrame(logs_data)
-    if not df_logs.empty:
-        df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
-        df_logs = df_logs.dropna(subset=['dt'])
+    if not emp_res.data:
+        st.error("Invalid identity PIN code entered. Access Denied.")
+    else:
+        emp_data = emp_res.data[0]
+        st.success(f"Authenticated Account Workspace: {emp_data['name']} ({emp_data['emp_code']})")
         
+        # System Calendar Variables Configuration
+        today = datetime.date.today()
+        current_year = today.year
+        current_month = today.month
+        
+        # Set absolute boundaries for the active operational month
+        start_month_ts = datetime.datetime(current_year, current_month, 1, 0, 0, 0).isoformat()
+        end_month_ts = datetime.datetime(current_year, current_month, calendar.monthrange(current_year, current_month)[1], 23, 59, 59).isoformat()
+        
+        # Pull Live Data Records out of Supabase Tables
+        logs_res = supabase.table("attendance_logs")\
+            .select("*")\
+            .eq("employee_id", emp_data['id'])\
+            .gte("timestamp", start_month_ts)\
+            .lte("timestamp", end_month_ts).execute()
+            
+        leaves_res = supabase.table("leave_applications")\
+            .select("*")\
+            .eq("employee_id", emp_data['id']).execute()
+            
+        df_logs = pd.DataFrame(logs_res.data) if logs_res.data else pd.DataFrame()
+        df_leaves = pd.DataFrame(leaves_res.data) if leaves_res.data else pd.DataFrame()
+        
+        # Parse Dates string columns into manageable formats
         if not df_logs.empty:
-            worked_days_set = set(df_logs['dt'].dt.day.unique())
-            df_logs['date'] = df_logs['dt'].dt.date
+            df_logs['dt_parsed'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
+            df_logs['date_only'] = df_logs['dt_parsed'].dt.date
             
-            for day_date, group in df_logs.groupby('date'):
-                day_hours = 0.0
-                last_in = None
-                sorted_group = group.sort_values('dt')
-                
-                for _, row in sorted_group.iterrows():
-                    log_time = row['dt'].time()
-                    if row['action'] == 'IN':
-                        last_in = row['dt']
-                        if log_time > org_start:
-                            late_ins += 1
-                    elif row['action'] == 'OUT' and last_in is not None:
-                        day_hours += (row['dt'] - last_in).total_seconds() / 3600.0
-                        last_in = None
-                        if log_time < org_end:
-                            early_outs += 1
-                            
-                daily_durations[day_date.day] = day_hours
-                total_wh += day_hours
-                if 0 < day_hours < 4.0:
-                    half_days += 1
-                if day_hours < 8.0:
-                    deficit_hours += (8.0 - day_hours)
-
-    days_worked = len(worked_days_set)
-    avg_wh = round(total_wh / days_worked, 2) if days_worked > 0 else 0.0
-    
-    # Process Approved Leaves tracking ranges
-    approved_leave_days = set()
-    total_approved_leaves_count = 0
-    
-    for lv in leaves_data:
-        # Check explicit status column metric field values
-        if lv.get('status') == 'Approved':
-            lv_from = datetime.strptime(lv['from_date'], "%Y-%m-%d").date()
-            lv_to = datetime.strptime(lv['to_date'], "%Y-%m-%d").date()
+        # --- TRUE ANALYTICAL METRICS CALCULATIONS (Pandas Aggregations) ---
+        days_worked = df_logs['date_only'].nunique() if not df_logs.empty else 0
+        total_leaves = len(df_leaves[df_leaves['status'] == 'Approved']) if not df_leaves.empty else 0
+        
+        system_timeouts = 0
+        if not df_logs.empty:
+            system_timeouts = df_logs['log_remark'].str.contains("System Auto Clock Out", na=False).sum()
             
-            if lv_from.month == curr_month or lv_to.month == curr_month:
-                total_approved_leaves_count += lv['no_of_days']
-                
-            curr_step = lv_from
-            while curr_step <= lv_to:
-                if curr_step.month == curr_month:
-                    approved_leave_days.add(curr_step.day)
-                curr_step += timedelta(days=1)
-            
-    absents = 0
-    for d in range(1, now.day + 1):
-        check_dt = date(curr_year, curr_month, d)
-        mapped_db_day = (check_dt.weekday() + 1) % 7
-        if mapped_db_day in allowed_work_week:
-            if d not in worked_days_set and d not in approved_leave_days:
-                absents += 1
-
-    tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
-    
-    with tab_summary:
+        # --- RENDER ADAPTABLE FLEX/GRID VISUAL TILE LAYOUT ---
         st.markdown(f"""
-        <div class="metric-container">
-            <div class="metric-card bg-absent"><div class="metric-val">{absents}</div><div class="metric-lbl">Absents</div></div>
-            <div class="metric-card bg-leave"><div class="metric-val">{total_approved_leaves_count}</div><div class="metric-lbl">On Leave</div></div>
-            <div class="metric-card bg-half"><div class="metric-val">{half_days}</div><div class="metric-lbl">Half Days</div></div>
-        </div>
-        <div class="sub-metric-grid">
-            <div class="sub-metric-card"><div class="icon-val">🕒 {late_ins}</div><div class="label">Late In</div></div>
-            <div class="sub-metric-card"><div class="icon-val">⏰ {early_outs}</div><div class="label">Early Out</div></div>
-            <div class="sub-metric-card"><div class="icon-val">⏱️ {round(deficit_hours, 1)}h</div><div class="label">Deficit</div></div>
-        </div>
-        <div class="sub-metric-grid">
-            <div class="sub-metric-card"><div class="icon-val">📅 {round(total_wh, 2)}</div><div class="label">Total WH</div></div>
-            <div class="sub-metric-card"><div class="icon-val">💼 {days_worked}</div><div class="label">Days Worked</div></div>
-            <div class="sub-metric-card"><div class="icon-val">📈 {avg_wh}</div><div class="label">Avg. WH</div></div>
+        <div class="mobile-grid-container">
+            <div class="metric-card">
+                <div class="metric-title">Days Worked</div>
+                <div class="metric-value">{days_worked}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">On Leave</div>
+                <div class="metric-value">{total_leaves}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Auto Timeouts</div>
+                <div class="metric-value">{system_timeouts}</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown("---")
-        st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
+        portal_tabs = st.tabs(["🗓️ Visual Calendar Matrix", "📝 File Self-Service Leave"])
         
-        cal = calendar.monthcalendar(curr_year, curr_month)
-        cal_html = '<div class="calendar-grid">'
-        for d_name in ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]:
-            cal_html += f'<div class="calendar-header">{d_name}</div>'
+        # --- TAB 1: OPERATIONAL VISUALIZATION CALENDAR ---
+        with portal_tabs[0]:
+            st.subheader(f"Shift Status Matrix: {calendar.month_name[current_month]} {current_year}")
             
-        for week in cal:
-            for idx, day in enumerate(week):
-                if day == 0:
-                    cal_html += '<div></div>'
-                else:
-                    is_today = (day == now.day)
-                    day_cls = "calendar-day day-today" if is_today else "calendar-day"
-                    c_date = date(curr_year, curr_month, day)
-                    db_day_idx = (c_date.weekday() + 1) % 7
-                    
-                    dot_html = '<div class="cal-dot-container">'
-                    if day in worked_days_set:
-                        dot_html += '<span class="cal-dot"></span>'
-                    elif day in approved_leave_days:
-                        dot_html += '<span class="cal-dot cal-dot-leave"></span>'
-                    elif db_day_idx not in allowed_work_week:
-                        dot_html += '<span class="cal-dot cal-dot-holiday"></span>'
-                    elif day < now.day:
-                        dot_html += '<span class="cal-dot cal-dot-absent"></span>'
+            # Print Calendar Header Row Fields
+            days_header_html = "".join(f'<div class="calendar-header-cell">{d[:3]}</div>' for d in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
+            st.markdown(f'<div class="calendar-grid">{days_header_html}</div>', unsafe_allow_html=True)
+            
+            # Calculate Month Structure Matrix Blocks
+            cal_matrix = calendar.monthcalendar(current_year, current_month)
+            grid_cells_html = []
+            
+            for week in cal_matrix:
+                for day_idx, day in enumerate(week):
+                    if day == 0:
+                        grid_cells_html.append('<div class="calendar-day-box" style="visibility: hidden;"></div>')
                     else:
-                        dot_html += '<span style="height:6px; width:6px; display:inline-block;"></span>'
-                    dot_html += '</div>'
+                        eval_date = datetime.date(current_year, current_month, day)
+                        eval_weekday = (eval_date.weekday() + 1) % 7
                         
-                    cal_html += f'<div class="{day_cls}"><span style="display:block; font-size:14px; line-height:1.2;">{day}</span>{dot_html}</div>'
-        cal_html += '</div>'
-        st.markdown(cal_html, unsafe_allow_html=True)
-
-    with tab_apply:
-        st.subheader("Apply for Leave")
-        with st.form("leave_application_form", clear_on_submit=True):
-            reason = st.text_input("Reason for Leave", placeholder="Medical treatment, Family function, etc.")
-            col_f, col_t = st.columns(2)
-            f_date = col_f.date_input("From Date", min_value=date.today())
-            t_date = col_t.date_input("To Date", min_value=date.today())
-            submit_btn = st.form_submit_button('Submit Leave Application')
+                        # Establish Base Boolean Condition Flags for Indicators
+                        has_logs = False
+                        is_sys_timeout = False
+                        is_weekoff = eval_weekday in (emp_data['week_offs'] or [])
+                        is_approved_leave = False
+                        
+                        # Process database log variables against target calendar elements
+                        if not df_logs.empty:
+                            day_tracks = df_logs[df_logs['date_only'] == eval_date]
+                            if not day_tracks.empty:
+                                has_logs = True
+                                if day_tracks['log_remark'].str.contains("System Auto Clock Out", na=False).any():
+                                    is_sys_timeout = True
+                                if (day_tracks['action'] == 'WEEK_OFF').any():
+                                    is_weekoff = True
+                                    
+                        # Sync active approved corporate leaves arrays
+                        if not df_leaves.empty:
+                            active_leaves = df_leaves[(df_leaves['status'] == 'Approved') & 
+                                                      (pd.to_datetime(df_leaves['from_date']).dt.date <= eval_date) & 
+                                                      (pd.to_datetime(df_leaves['to_date']).dt.date >= eval_date)]
+                            if not active_leaves.empty:
+                                is_approved_leave = True
+                                
+                        # Append the matching color dot structures
+                        dots_html = ""
+                        if is_approved_leave:
+                            dots_html += '<span class="dot dot-leave" title="Approved Corporate Leave"></span>'
+                        if is_weekoff:
+                            dots_html += '<span class="dot dot-weekoff" title="Scheduled Week-Off"></span>'
+                        if is_sys_timeout:
+                            dots_html += '<span class="dot dot-system" title="System Auto Timeout Event"></span>'
+                        elif has_logs and not is_weekoff:
+                            dots_html += '<span class="dot dot-active" title="Active Log Generated"></span>'
+                            
+                        cell_box = f"""
+                        <div class="calendar-day-box">
+                            <div class="day-number">{day}</div>
+                            <div class="status-dot-container">{dots_html}</div>
+                        </div>
+                        """
+                        grid_cells_html.append(cell_box)
+                        
+            st.markdown(f'<div class="calendar-grid">{"".join(grid_cells_html)}</div>', unsafe_allow_html=True)
             
-            if submit_btn:
-                if t_date < f_date:
-                    st.error("Error: 'To Date' cannot occur before 'From Date'.")
-                elif not reason.strip():
-                    st.error("Please enter a valid reason.")
-                else:
-                    delta_days = (t_date - f_date).days + 1
-                    supabase.table("leave_applications").insert({
-                        "employee_id": selected_emp['id'],
-                        "leave_reason": reason,
-                        "from_date": f_date.isoformat(),
-                        "to_date": t_date.isoformat(),
-                        "no_of_days": delta_days,
-                        "status": "Pending",
-                        "is_approved": False
-                    }).execute()
-                    st.success("Successfully submitted request!")
-                    st.rerun()
-                        
-        st.markdown("---")
-        st.subheader("Your Leave History & Feedback")
-        if leaves_data:
-            df_history = pd.DataFrame(leaves_data)[[
-                'from_date', 'to_date', 'no_of_days', 'leave_reason', 'status', 'rejection_reason'
-            ]].rename(columns={
-                'from_date': 'From', 'to_date': 'To', 'no_of_days': 'Days', 
-                'leave_reason': 'Reason', 'status': 'Approval Status', 'rejection_reason': 'Remarks/Reject Reason'
-            })
-            # Make NaN values show up as clean string indicators
-            df_history['Remarks/Reject Reason'] = df_history['Remarks/Reject Reason'].fillna("—")
-            st.dataframe(df_history, use_container_width=True, hide_index=True)
-        else:
-            st.info("No historical logs recorded yet.")
-
-    with tab_holidays:
-        st.info("Corporate Holiday rosters tracking active.")
-        
+        # --- TAB 2: REQUEST FORM SUBMITTAL COMPONENT ---
+        with portal_tabs[1]:
+            st.subheader("Apply for Corporate Leave")
+            with st.form("leave_submission_form", clear_on_submit=True):
+                reason = st.text_input("State Formal Leave Reason / Context")
+                c1, c2 = st.columns(2)
+                f_date = c1.date_input("Start Date Bound", datetime.date.today())
+                t_date = c2.date_input("End Date Bound", datetime.date.today())
+                
+                if st.form_submit_button("Submit Application"):
+                    if t_date < f_date:
+                        st.error("Validation Error: End Date cannot occur before the selected Start Date.")
+                    else:
+                        days_delta = (t_date - f_date).days + 1
+                        supabase.table("leave_applications").insert({
+                            "employee_id": emp_data['id'],
+                            "leave_reason": reason,
+                            "no_days": days_delta,
+                            "from_date": f_date.isoformat(),
+                            "to_date": t_date.isoformat(),
+                            "status": "Pending",
+                            "is_approved": False
+                        }).execute()
+                        st.success("Application successfully routed to database. Awaiting administrative review.")
+            
+            # Historical Leave Tracks Audit Stream Component
+            st.markdown("---")
+            st.subheader("Leave Application Tracking History")
+            if not df_leaves.empty:
+                for _, row in df_leaves.iterrows():
+                    status_badge = "🟢 Approved" if row['status'] == 'Approved' else ("🔴 Rejected" if row['status'] == 'Rejected' else "🟡 Pending Review")
+                    st.write(f"**Period:** {row['from_date']} to {row['to_date']} | Status: {status_badge}")
+                    st.write(f"*Reason Filed:* {row['leave_reason']}")
+                    if row['status'] == 'Rejected' and row.get('rejection_reason'):
+                        st.warning(f"⚠️ **Admin Rejection Feedback:** {row['rejection_reason']}")
+                    st.markdown("---")
+                    
