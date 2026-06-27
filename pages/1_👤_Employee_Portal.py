@@ -28,15 +28,15 @@ st.markdown("""
     .cal-dot { height: 6px; width: 6px; background-color: #10B981; border-radius: 50%; margin-top: 4px; }
     .cal-dot-absent { height: 6px; width: 6px; background-color: #DC2626; border-radius: 50%; margin-top: 4px; }
     .cal-dot-leave { height: 6px; width: 6px; background-color: #7C3AED; border-radius: 50%; margin-top: 4px; }
-    .cal-dot-holiday { background-color: #9CA3AF; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Multi-Tenant Security Selectors ---
-org_response = supabase.table("organizations").select("id, name, job_start_time, job_end_time, work_week").execute()
+# --- Multi-Tenant Context Isolation Selectors ---
+# FIXED: Removed non-existent job_start_time / job_end_time from the organizations table selection
+org_response = supabase.table("organizations").select("id, name, work_week").execute()
 orgs = org_response.data or []
 
 if not orgs:
@@ -47,7 +47,8 @@ org_map = {o['name']: o for o in orgs}
 selected_org_name = st.selectbox("Verify Organization", list(org_map.keys()))
 selected_org = org_map[selected_org_name]
 
-emp_response = supabase.table("employees").select("id, name, pin").eq("organization_id", selected_org['id']).execute()
+# FIXED: Fetch shift overrides directly from the employee record schema targets
+emp_response = supabase.table("employees").select("id, name, pin, job_start_time, job_end_time").eq("organization_id", selected_org['id']).execute()
 employees = emp_response.data or []
 
 if not employees:
@@ -71,14 +72,13 @@ if pin_input and pin_input == selected_emp['pin']:
     start_date = date(curr_year, curr_month, 1)
     end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
     
-    # Query logs & leaves dynamically
+    # Fetch log data structures
     logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
     leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
     
     logs_data = logs_res.data or []
     leaves_data = leaves_res.data or []
     
-    # Build active tracking structures via datasets
     worked_days_set = set()
     daily_durations = {}
     late_ins = 0
@@ -87,9 +87,13 @@ if pin_input and pin_input == selected_emp['pin']:
     total_wh = 0.0
     deficit_hours = 0.0
     
-    org_start = datetime.strptime(selected_org.get('job_start_time', '09:00:00'), "%H:%M:%S").time() if selected_org.get('job_start_time') else time(9, 0)
-    org_end = datetime.strptime(selected_org.get('job_end_time', '18:00:00'), "%H:%M:%S").time() if selected_org.get('job_end_time') else time(18, 0)
-    allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5] # Default fallback
+    # FIXED: Extracting time data elements out of the selected employee metadata safely
+    emp_start_str = selected_emp.get('job_start_time') or '09:00:00'
+    emp_end_str = selected_emp.get('job_end_time') or '18:00:00'
+    
+    org_start = datetime.strptime(emp_start_str, "%H:%M:%S").time()
+    org_end = datetime.strptime(emp_end_str, "%H:%M:%S").time()
+    allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5]
     
     df_logs = pd.DataFrame(logs_data)
     if not df_logs.empty:
@@ -131,11 +135,9 @@ if pin_input and pin_input == selected_emp['pin']:
         lv_from = datetime.strptime(lv['from_date'], "%Y-%m-%d").date()
         lv_to = datetime.strptime(lv['to_date'], "%Y-%m-%d").date()
         
-        # Track overall count for active metrics display
         if lv['is_approved'] and (lv_from.month == curr_month or lv_to.month == curr_month):
             total_approved_leaves_count += lv['no_of_days']
             
-        # Unroll date metrics block mapping
         curr_step = lv_from
         while curr_step <= lv_to:
             if curr_step.month == curr_month:
@@ -146,8 +148,6 @@ if pin_input and pin_input == selected_emp['pin']:
     absents = 0
     for d in range(1, now.day + 1):
         check_dt = date(curr_year, curr_month, d)
-        # Convert standard Python weekday notation: Mon=0 -> Sun=6
-        # To DB array configuration standard matching: Sun=0 -> Sat=6
         mapped_db_day = (check_dt.weekday() + 1) % 7
         
         if mapped_db_day in allowed_work_week:
@@ -197,13 +197,13 @@ if pin_input and pin_input == selected_emp['pin']:
                     
                     dot_html = ""
                     if day in worked_days_set:
-                        dot_html = '<span class="cal-dot"></span>' # Worked
+                        dot_html = '<span class="cal-dot"></span>'
                     elif day in approved_leave_days:
-                        dot_html = '<span class="cal-dot cal-dot-leave"></span>' # Purple Leave Dot
+                        dot_html = '<span class="cal-dot cal-dot-leave"></span>'
                     elif db_day_idx not in allowed_work_week:
-                        cal_html = cal_html  # Exclude weekend markers safely
+                        cal_html = cal_html  
                     elif day < now.day:
-                        dot_html = '<span class="cal-dot cal-dot-absent"></span>' # Red Absent Dot
+                        dot_html = '<span class="cal-dot cal-dot-absent"></span>'
                         
                     cal_html += f'<div class="{day_cls}">{day}{dot_html}</div>'
         cal_html += '</div>'
@@ -211,13 +211,11 @@ if pin_input and pin_input == selected_emp['pin']:
 
     with tab_apply:
         st.subheader("Apply for Leave")
-        
         with st.form("leave_application_form", clear_on_submit=True):
             reason = st.text_input("Reason for Leave", placeholder="Medical treatment, Family function, etc.")
             col_f, col_t = st.columns(2)
             f_date = col_f.date_input("From Date", min_value=date.today())
             t_date = col_t.date_input("To Date", min_value=date.today())
-            
             submit_btn = st.form_submit_button('Submit Leave Application')
             
             if submit_btn:
@@ -227,7 +225,6 @@ if pin_input and pin_input == selected_emp['pin']:
                     st.error("Please enter a valid reason.")
                 else:
                     delta_days = (t_date - f_date).days + 1
-                    
                     leave_payload = {
                         "employee_id": selected_emp['id'],
                         "leave_reason": reason,
@@ -236,7 +233,6 @@ if pin_input and pin_input == selected_emp['pin']:
                         "no_of_days": delta_days,
                         "is_approved": False
                     }
-                    
                     try:
                         supabase.table("leave_applications").insert(leave_payload).execute()
                         st.success(f"Successfully submitted request for {delta_days} day(s)!")
