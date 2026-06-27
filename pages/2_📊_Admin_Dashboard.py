@@ -17,7 +17,7 @@ if admin_email and admin_pass == "admin123": # Keep simple for MVP
     current_org_id = org_options[sel_org]['id']
     
     # Date Filtering Rules
-    filter_date = st.date_picker("Filter Records by Date")
+    filter_date = st.date_input("Filter Records by Date")
     
     if st.button("Generate Attendance Report"):
         # Relational Join Logic executed cleanly through Supabase Engine
