@@ -13,7 +13,6 @@ def auto_close_hanging_shifts(employee_id):
     """Closes any unlogged OUT actions from previous dates before creating new records."""
     today = datetime.date.today()
     
-    # FIXED: Re-ordered query chain parameters. Filter constraints (.eq) must precede sorting (.order).
     res = supabase.table("attendance_logs")\
         .select("*")\
         .eq("employee_id", employee_id)\
@@ -90,11 +89,13 @@ else:
             today_date = datetime.date.today()
             today_weekday = (today_date.weekday() + 1) % 7
             
+            # FIXED: Added missing .select("*") to provide valid query capabilities
             leave_res = supabase.table("leave_applications")\
+                .select("*")\
                 .eq("employee_id", emp['id'])\
                 .eq("status", "Approved")\
-                .gte("to_date", today_date.isoformat())\
-                .lte("from_date", today_date.isoformat()).execute()
+                .lte("from_date", today_date.isoformat())\
+                .gte("to_date", today_date.isoformat()).execute()
                 
             if leave_res.data:
                 st.info("🚨 Kiosk Lockout: You are officially scheduled on an Approved Corporate Leave today.")
@@ -159,4 +160,3 @@ else:
                                 }).execute()
                                 st.success("Shift record updated successfully.")
                                 st.rerun()
-                                
