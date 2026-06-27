@@ -1,7 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from database import supabase  # Your centralized Supabase client integration
+from database import supabase  # Centralized multi-tenant client handle
 
 st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered")
 
@@ -12,10 +12,11 @@ def get_employee_by_pin(pin_code, org_id):
 def auto_close_hanging_shifts(employee_id):
     """Closes any unlogged OUT actions from previous dates before creating new records."""
     today = datetime.date.today()
+    # FIXED: Swapped out 'ascending=False' for the proper PostgREST 'desc=True' parameter
     res = supabase.table("attendance_logs")\
         .select("*")\
         .eq("employee_id", employee_id)\
-        .order("timestamp", ascending=False)\
+        .order("timestamp", desc=True)\
         .limit(1).execute()
     
     if res.data:
@@ -33,7 +34,7 @@ def auto_close_hanging_shifts(employee_id):
             }).execute()
 
 def check_missed_punch_lockout(employee_id, week_offs, work_week):
-    """Verifies if the employee left an unexcused absolute void on their last scheduled operational day."""
+    """Verifies if the employee left an unexcused void on their last scheduled operational day."""
     today = datetime.date.today()
     check_day = today - datetime.timedelta(days=1)
     
@@ -90,7 +91,7 @@ else:
             
             leave_res = supabase.table("leave_applications")\
                 .eq("employee_id", emp['id'])\
-                .eq("is_approved", True)\
+                .eq("status", "Approved")\
                 .gte("to_date", today_date.isoformat())\
                 .lte("from_date", today_date.isoformat()).execute()
                 
