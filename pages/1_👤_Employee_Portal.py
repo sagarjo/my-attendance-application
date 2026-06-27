@@ -10,6 +10,7 @@ st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide"
 # Mobile-Responsive Fixed Grid Styling Matrix
 st.markdown("""
 <style>
+    /* High-level status headers */
     .metric-container { display: flex; flex-wrap: nowrap; gap: 10px; margin-bottom: 20px; width: 100%; }
     .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 12px 6px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
     .metric-val { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
@@ -17,17 +18,40 @@ st.markdown("""
     .bg-absent { background-color: #FFF0F2; color: #DC2626; }
     .bg-leave { background-color: #F3E8FF; color: #7C3AED; }
     .bg-half { background-color: #FFF7ED; color: #EA580C; }
+    
+    /* 3-Column Sub metrics spacing rules */
     .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
     .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 10px 4px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .sub-metric-card .icon-val { font-size: 14px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 11px; margin-top: 2px; }
-    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; }
-    .calendar-header { font-weight: 700; font-size: 11px; color: #4B5563; padding-bottom: 8px; }
-    .calendar-day { padding: 8px 0px; font-size: 13px; font-weight: 500; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 45px; background-color: #F9FAFB; }
-    .day-today { background-color: #00E5FF !important; color: #000000 !important; font-weight: 700; }
-    .cal-dot { height: 6px; width: 6px; background-color: #10B981; border-radius: 50%; margin-top: 4px; }
-    .cal-dot-absent { height: 6px; width: 6px; background-color: #DC2626; border-radius: 50%; margin-top: 4px; }
-    .cal-dot-leave { height: 6px; width: 6px; background-color: #7C3AED; border-radius: 50%; margin-top: 4px; }
+    
+    /* Strict 7-Column Layout Grid for Calendar Views */
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; width: 100%; }
+    .calendar-header { font-weight: 700; font-size: 11px; color: #4B5563; padding-bottom: 8px; text-transform: uppercase; }
+    
+    /* Individual Day Container Box Styling */
+    .calendar-day { 
+        padding: 8px 0px; 
+        font-size: 14px; 
+        font-weight: 600; 
+        color: #111827 !important; /* Forces highly readable dark charcoal text numbers */
+        border-radius: 8px; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        min-height: 52px; 
+        background-color: #F9FAFB; 
+        box-shadow: inset 0 0 0 1px #E5E7EB;
+    }
+    .day-today { background-color: #00E5FF !important; color: #000000 !important; font-weight: 700; box-shadow: none; }
+    
+    /* Status dots configuration rules */
+    .cal-dot-container { display: flex; gap: 3px; justify-content: center; align-items: center; margin-top: 4px; height: 6px; }
+    .cal-dot { height: 6px; width: 6px; background-color: #10B981; border-radius: 50%; }
+    .cal-dot-absent { height: 6px; width: 6px; background-color: #DC2626; border-radius: 50%; }
+    .cal-dot-leave { height: 6px; width: 6px; background-color: #7C3AED; border-radius: 50%; }
+    .cal-dot-holiday { height: 6px; width: 6px; background-color: #9CA3AF; border-radius: 50%; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -70,7 +94,7 @@ if pin_input and pin_input == selected_emp['pin']:
     start_date = date(curr_year, curr_month, 1)
     end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
     
-    # Query database records
+    # Fetch data logs from Supabase
     logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
     leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
     
@@ -94,12 +118,10 @@ if pin_input and pin_input == selected_emp['pin']:
     
     df_logs = pd.DataFrame(logs_data)
     if not df_logs.empty:
-        # Enforce dynamic serialization via Pandas with UTC normalization parameters
         df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
         df_logs = df_logs.dropna(subset=['dt'])
         
         if not df_logs.empty:
-            # FIXED: Extracting day components directly from the valid Datetime index column
             worked_days_set = set(df_logs['dt'].dt.day.unique())
             df_logs['date'] = df_logs['dt'].dt.date
             
@@ -148,7 +170,7 @@ if pin_input and pin_input == selected_emp['pin']:
                 approved_leave_days.add(curr_step.day)
             curr_step += timedelta(days=1)
             
-    # Calculate Absents dynamically
+    # Calculate Absents dynamically against the business work week array
     absents = 0
     for d in range(1, now.day + 1):
         check_dt = date(curr_year, curr_month, d)
@@ -158,7 +180,7 @@ if pin_input and pin_input == selected_emp['pin']:
             if d not in worked_days_set and d not in approved_leave_days:
                 absents += 1
 
-    # Navigation Tabs
+    # Tab System Views Navigation
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
     
     with tab_summary:
@@ -183,7 +205,7 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Build Grid Calendar
+        # Build Grid Calendar Matrix
         cal = calendar.monthcalendar(curr_year, curr_month)
         cal_html = '<div class="calendar-grid">'
         for d_name in ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]:
@@ -199,17 +221,22 @@ if pin_input and pin_input == selected_emp['pin']:
                     c_date = date(curr_year, curr_month, day)
                     db_day_idx = (c_date.weekday() + 1) % 7
                     
-                    dot_html = ""
+                    # Generate dot indicator blocks based on status parameters
+                    dot_html = '<div class="cal-dot-container">'
                     if day in worked_days_set:
-                        dot_html = '<span class="cal-dot"></span>'
+                        dot_html += '<span class="cal-dot"></span>' # Green present dot
                     elif day in approved_leave_days:
-                        dot_html = '<span class="cal-dot cal-dot-leave"></span>'
+                        dot_html += '<span class="cal-dot cal-dot-leave"></span>' # Purple leave dot
                     elif db_day_idx not in allowed_work_week:
-                        cal_html = cal_html  
+                        dot_html += '<span class="cal-dot cal-dot-holiday"></span>' # Grey weekend dot
                     elif day < now.day:
-                        dot_html = '<span class="cal-dot cal-dot-absent"></span>'
+                        dot_html += '<span class="cal-dot cal-dot-absent"></span>' # Red absent dot
+                    else:
+                        dot_html += '<span style="height:6px; width:6px; display:inline-block;"></span>'
+                    dot_html += '</div>'
                         
-                    cal_html += f'<div class="{day_cls}">{day}{dot_html}</div>'
+                    # FIXED: Explicitly wrap the date string inside a structured layout span block
+                    cal_html += f'<div class="{day_cls}"><span style="display:block; font-size:14px; line-height:1.2;">{day}</span>{dot_html}</div>'
         cal_html += '</div>'
         st.markdown(cal_html, unsafe_allow_html=True)
 
