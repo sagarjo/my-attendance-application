@@ -94,15 +94,14 @@ if pin_input and pin_input == selected_emp['pin']:
     
     df_logs = pd.DataFrame(logs_data)
     if not df_logs.empty:
-        # FIXED: Enforced strict datetime serialization via Pandas with UTC normalization parameters
+        # Enforce dynamic serialization via Pandas with UTC normalization parameters
         df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
-        
-        # Strip rows that failed parsing to prevent unexpected string conversion behavior
         df_logs = df_logs.dropna(subset=['dt'])
         
         if not df_logs.empty:
+            # FIXED: Extracting day components directly from the valid Datetime index column
+            worked_days_set = set(df_logs['dt'].dt.day.unique())
             df_logs['date'] = df_logs['dt'].dt.date
-            worked_days_set = set(df_logs['date'].dt.day.unique())
             
             for day_date, group in df_logs.groupby('date'):
                 day_hours = 0.0
@@ -110,7 +109,6 @@ if pin_input and pin_input == selected_emp['pin']:
                 sorted_group = group.sort_values('dt')
                 
                 for _, row in sorted_group.iterrows():
-                    # Handle comparison against timezone-aware localized values
                     log_time = row['dt'].time()
                     
                     if row['action'] == 'IN':
