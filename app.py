@@ -12,7 +12,8 @@ def get_employee_by_pin(pin_code, org_id):
 def auto_close_hanging_shifts(employee_id):
     """Closes any unlogged OUT actions from previous dates before creating new records."""
     today = datetime.date.today()
-    # FIXED: Swapped out 'ascending=False' for the proper PostgREST 'desc=True' parameter
+    
+    # FIXED: Re-ordered query chain parameters. Filter constraints (.eq) must precede sorting (.order).
     res = supabase.table("attendance_logs")\
         .select("*")\
         .eq("employee_id", employee_id)\
@@ -34,7 +35,7 @@ def auto_close_hanging_shifts(employee_id):
             }).execute()
 
 def check_missed_punch_lockout(employee_id, week_offs, work_week):
-    """Verifies if the employee left an unexcused void on their last scheduled operational day."""
+    """Verifies if the employee missed a clock-in on their last scheduled operational day."""
     today = datetime.date.today()
     check_day = today - datetime.timedelta(days=1)
     
@@ -101,7 +102,7 @@ else:
                 is_locked_out = check_missed_punch_lockout(emp['id'], emp['week_offs'], org_data['work_week'])
                 
                 if is_locked_out:
-                    st.error("❌ Attendance System Locked Out: You missed a valid Clock In on your last scheduled working shift. You must obtain administrative dashboard sign-off first.")
+                    st.error("❌ Attendance System Locked Out: You missed a valid Clock In on your last scheduled working shift. Get administrative sign-off first.")
                     if st.button("File Exception Report for Admin Review"):
                         supabase.table("attendance_logs").insert({
                             "employee_id": emp['id'],
@@ -158,3 +159,4 @@ else:
                                 }).execute()
                                 st.success("Shift record updated successfully.")
                                 st.rerun()
+                                
