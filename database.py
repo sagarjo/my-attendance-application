@@ -19,11 +19,18 @@ def get_organizations():
     res = supabase.table("organizations").select("*").execute()
     return res.data
 
-def create_organization(name, org_code, roles, lat, lng, radius, tz, start_t, end_t):
+def create_organization(name, org_code, roles, lat, lng, radius, tz, start_t, end_t, work_week):
     data = {
-        "name": name, "org_code": org_code.upper(), "job_roles": roles,
-        "geo_latitude": lat, "geo_longitude": lng, "geo_radius_meters": radius,
-        "timezone": tz, "shift_start_time": str(start_t), "shift_end_time": str(end_t)
+        "name": name, 
+        "org_code": org_code.upper(), 
+        "job_roles": roles,
+        "geo_latitude": lat, 
+        "geo_longitude": lng, 
+        "geo_radius_meters": radius,
+        "timezone": tz, 
+        "shift_start_time": str(start_t), 
+        "shift_end_time": str(end_t),
+        "work_week": work_week  # Pass the array of selected integer days
     }
     return supabase.table("organizations").insert(data).execute()
 
