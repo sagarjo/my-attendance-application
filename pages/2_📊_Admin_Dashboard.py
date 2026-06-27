@@ -73,8 +73,9 @@ else:
         with tab_leaves:
             st.subheader("Review Pending Self-Service Leave Submissions")
             
+            # FIXED: Column targeted correctly as no_of_days
             pending_leaves = supabase.table("leave_applications")\
-                .select("id, employee_id, leave_reason, no_days, from_date, to_date, status, employees!inner(name, emp_code, organization_id)")\
+                .select("id, employee_id, leave_reason, no_of_days, from_date, to_date, status, employees!inner(name, emp_code, organization_id)")\
                 .eq("status", "Pending")\
                 .eq("employees.organization_id", current_org_id).execute()
                 
@@ -87,7 +88,7 @@ else:
                     
                     with st.container():
                         st.write(f"**Staff Member:** {emp_ref['name']} ({emp_ref['emp_code']})")
-                        st.write(f"**Duration:** {leave['from_date']} to {leave['to_date']} ({leave['no_days']} Days)")
+                        st.write(f"**Duration:** {leave['from_date']} to {leave['to_date']} ({leave['no_of_days']} Days)")
                         st.write(f"**Reason Profile:** {leave['leave_reason']}")
                         
                         reject_reason_input = st.text_input("Provide Rejection Feedback (Required if Rejecting)", key=f"txt_{leave_id}")
@@ -132,7 +133,6 @@ else:
             if not reporting_logs.data:
                 st.info("No recorded punches match the selected target date.")
             else:
-                # Flatten the deep nested inner join schema dictionary for data representation
                 flat_records = []
                 for row in reporting_logs.data:
                     flat_records.append({
@@ -145,7 +145,7 @@ else:
                     })
                 
                 df_report = pd.DataFrame(flat_records)
-                st.dataframe(df_report, use_container_width=True)
+                st.dataframe(df_report, width="stretch")
                 
                 csv_binary = df_report.to_csv(index=False).encode('utf-8')
                 st.download_button(
