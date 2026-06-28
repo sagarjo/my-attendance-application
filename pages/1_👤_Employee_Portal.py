@@ -3,12 +3,12 @@ import pandas as pd
 from datetime import datetime, date, timedelta, time
 import calendar
 from database import get_supabase_client
-from calendar_utils import calculate_attendance_metrics  # Importing your utility layer
+from calendar_utils import calculate_attendance_metrics
 
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Polished Layout & Badge CSS Styles Injection
+# Polished KPI and Grid Card Style Definitions
 st.markdown("""
 <style>
     .metric-container { display: flex; flex-wrap: nowrap; gap: 10px; margin-bottom: 20px; width: 100%; }
@@ -24,7 +24,7 @@ st.markdown("""
     .sub-metric-card .icon-val { font-size: 14px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 11px; margin-top: 2px; }
 
-    .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; font-weight: bold; border-radius: 4px; margin-top: 4px; text-align: center; width: 85%; }
+    .status-badge { display: inline-block; padding: 2px 4px; font-size: 10px; font-weight: bold; border-radius: 4px; margin-top: 4px; text-align: center; width: 90%; }
     .badge-present { background-color: #E6F4EA; color: #137333; }
     .badge-absent { background-color: #FCE8E6; color: #C5221F; }
     .badge-leave { background-color: #F3E8FF; color: #7C3AED; }
@@ -35,7 +35,7 @@ st.markdown("""
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Tenant Selectors Context Setup ---
+# --- Context Filtration ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -63,38 +63,37 @@ pin_input = st.text_input("Confirm PIN Access", type="password", max_chars=4)
 if pin_input and pin_input == selected_emp['pin']:
     st.success(f"Verified Profile: {selected_emp['name']}")
     
-    # Current active targets setup
     now = datetime.now()
     curr_year, curr_month = now.year, now.month
     start_date = date(curr_year, curr_month, 1)
     end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
     
-    # Query database records
     logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
     leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
     
     logs_data = logs_res.data or []
     leaves_data = leaves_res.data or []
     
-    # Shift parameters setup
+    # Safe fallback parsing for work_week integer conversions
+    try:
+        work_days_count = int(selected_org.get('work_week', 6))
+    except (ValueError, TypeError):
+        work_days_count = 6
+
     shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
     shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
     org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
     org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
-    allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5]
     
-    # --- Executing Calculation via Modular Utility File ---
     df_logs = pd.DataFrame(logs_data)
     res_metrics = calculate_attendance_metrics(
-        df_logs, leaves_data, allowed_work_week, 
+        df_logs, leaves_data, work_days_count, 
         org_start, org_end, curr_year, curr_month
     )
     
-    # Navigation sub tabs layout structure
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
     
     with tab_summary:
-        # High Level KPI Metric Display Block
         st.markdown(f"""
         <div class="metric-container">
             <div class="metric-card bg-absent"><div class="metric-val">{res_metrics['absents']}</div><div class="metric-lbl">Absents</div></div>
@@ -116,12 +115,13 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Calendar Matrix UI rendering using native Streamlit safe spacing layout grids
-        days_weeks = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        # Safe 7-Column Layout view
+        days_weeks = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
         header_cols = st.columns(7)
         for i, weekday_name in enumerate(days_weeks):
             header_cols[i].markdown(f"<p style='text-align:center;font-weight:bold;margin:0;color:#4B5563;'>{weekday_name}</p>", unsafe_allow_html=True)
             
+        # calendar.calendar starts with Monday by default
         cal_matrix = calendar.monthcalendar(curr_year, curr_month)
         for week in cal_matrix:
             week_cols = st.columns(7)
@@ -131,14 +131,13 @@ if pin_input and pin_input == selected_emp['pin']:
                 else:
                     is_today = (day == now.day)
                     c_date = date(curr_year, curr_month, day)
-                    db_day_idx = (c_date.weekday() + 1) % 7
+                    iso_weekday = c_date.isoweekday()
                     
-                    # Compute status badge
                     if day in res_metrics["worked_days_set"]:
                         status_html = '<span class="status-badge badge-present">PRESENT</span>'
                     elif day in res_metrics["approved_leave_days"]:
                         status_html = '<span class="status-badge badge-leave">LEAVE</span>'
-                    elif db_day_idx not in allowed_work_week:
+                    elif iso_weekday > work_days_count:
                         status_html = '<span class="status-badge badge-off">WEEK OFF</span>'
                     elif day < now.day:
                         status_html = '<span class="status-badge badge-absent">ABSENT</span>'
@@ -150,8 +149,8 @@ if pin_input and pin_input == selected_emp['pin']:
                     text_color = "#000000" if is_today else "#111827"
                     
                     week_cols[idx].markdown(f"""
-                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:8px 2px; text-align:center; min-height:65px;">
-                        <span style="font-size:16px; font-weight:700; color:{text_color}; display:block;">{day}</span>
+                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:6px 2px; text-align:center; min-height:62px;">
+                        <span style="font-size:15px; font-weight:700; color:{text_color}; display:block;">{day}</span>
                         {status_html}
                     </div>
                     """, unsafe_allow_html=True)
