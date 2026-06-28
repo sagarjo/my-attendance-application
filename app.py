@@ -2,28 +2,31 @@
 import streamlit as st 
 import datetime 
 import pandas as pd 
-from database import supabase # Centralized multi-tenant client handle 
+from database import supabase 
 
-# Ensure this call is at the absolute top of your script
+# Ensure this call remains at the absolute top of your script
 st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered") 
 
 # --- OVERRIDE SIDEBAR FILENAME DISPLAY ---
-# This renames the main script entry in the sidebar from "app" to your preferred title
+# This safely overrides and resizes the text space to render "Mark Attendance" completely
 st.sidebar.markdown(
     """
     <style>
-        /* Target the first page link in the multi-page sidebar nav list */
+        /* Select and update the target text containment element */
         [data-testid="stSidebarNav"] ul li:first-child span {
             visibility: hidden;
-            position: relative;
+            display: inline-block;
+            width: 100%;
         }
         [data-testid="stSidebarNav"] ul li:first-child span::after {
             content: "Mark Attendance";
             visibility: visible;
+            display: block;
             position: absolute;
             left: 0;
             top: 0;
-            white-space: nowrap;
+            width: max-content;
+            font-weight: 500;
         }
     </style>
     """,
@@ -37,7 +40,8 @@ def get_employee_by_pin(pin_code, org_id):
 st.title("🏢 Relational Multi-Tenant Corporate Kiosk") 
 st.markdown("---") 
 
-# ... (rest of your app.py implementation remains completely unchanged)
+# ... (the rest of your app.py execution logic remains unchanged)
+
 # Fetch Tenant Context
 org_res = supabase.table("organizations").select("id", "name").execute()
 org_options = {o['name']: o for o in org_res.data} if org_res.data else {}
