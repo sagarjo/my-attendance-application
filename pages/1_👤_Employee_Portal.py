@@ -8,34 +8,36 @@ from calendar_utils import calculate_attendance_metrics
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Polished KPI and Grid Card Style Definitions
+# Advanced Mobile-First Responsive CSS Architecture Injection
 st.markdown("""
 <style>
-    .metric-container { display: flex; flex-wrap: nowrap; gap: 10px; margin-bottom: 20px; width: 100%; }
-    .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 12px 6px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .metric-val { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
-    .metric-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* Metric Cards Grid Alignment */
+    .metric-container { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; width: 100%; }
+    .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 10px 4px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+    .metric-val { font-size: 20px; font-weight: 700; margin-bottom: 1px; }
+    .metric-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #6B7280; }
     .bg-absent { background-color: #FFF0F2; color: #DC2626; }
     .bg-leave { background-color: #F3E8FF; color: #7C3AED; }
     .bg-half { background-color: #FFF7ED; color: #EA580C; }
     
-    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 10px 4px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .sub-metric-card .icon-val { font-size: 14px; font-weight: 700; color: #111827; }
-    .sub-metric-card .label { color: #6B7280; font-size: 11px; margin-top: 2px; }
+    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 8px 2px; text-align: center; }
+    .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
+    .sub-metric-card .label { color: #6B7280; font-size: 10px; }
 
-    .status-badge { display: inline-block; padding: 2px 4px; font-size: 10px; font-weight: bold; border-radius: 4px; margin-top: 4px; text-align: center; width: 90%; }
+    /* Ultra Mobile-Optimized Calendar Cell Sizing Badges */
+    .status-badge { display: inline-block; padding: 1px 2px; font-size: 9px; font-weight: 800; border-radius: 4px; margin-top: 4px; text-align: center; width: 95%; text-transform: uppercase; }
     .badge-present { background-color: #E6F4EA; color: #137333; }
     .badge-absent { background-color: #FCE8E6; color: #C5221F; }
     .badge-leave { background-color: #F3E8FF; color: #7C3AED; }
-    .badge-off { background-color: #F1F3F4; color: #5F6368; }
+    .badge-off { background-color: #E8F0FE; color: #1A73E8; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Context Filtration ---
+# --- Multi-Tenant Fetch Selectors ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -74,7 +76,6 @@ if pin_input and pin_input == selected_emp['pin']:
     logs_data = logs_res.data or []
     leaves_data = leaves_res.data or []
     
-    # Safe fallback parsing for work_week integer conversions
     try:
         work_days_count = int(selected_org.get('work_week', 6))
     except (ValueError, TypeError):
@@ -115,13 +116,11 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Safe 7-Column Layout view
         days_weeks = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
         header_cols = st.columns(7)
         for i, weekday_name in enumerate(days_weeks):
-            header_cols[i].markdown(f"<p style='text-align:center;font-weight:bold;margin:0;color:#4B5563;'>{weekday_name}</p>", unsafe_allow_html=True)
+            header_cols[i].markdown(f"<p style='text-align:center;font-weight:700;font-size:11px;margin:0;color:#4B5563;'>{weekday_name}</p>", unsafe_allow_html=True)
             
-        # calendar.calendar starts with Monday by default
         cal_matrix = calendar.monthcalendar(curr_year, curr_month)
         for week in cal_matrix:
             week_cols = st.columns(7)
@@ -130,14 +129,13 @@ if pin_input and pin_input == selected_emp['pin']:
                     week_cols[idx].write("")
                 else:
                     is_today = (day == now.day)
-                    c_date = date(curr_year, curr_month, day)
-                    iso_weekday = c_date.isoweekday()
                     
+                    # Status text badge evaluation parameters matching explicit kiosk actions
                     if day in res_metrics["worked_days_set"]:
                         status_html = '<span class="status-badge badge-present">PRESENT</span>'
                     elif day in res_metrics["approved_leave_days"]:
                         status_html = '<span class="status-badge badge-leave">LEAVE</span>'
-                    elif iso_weekday > work_days_count:
+                    elif day in res_metrics["week_offs_set"]:
                         status_html = '<span class="status-badge badge-off">WEEK OFF</span>'
                     elif day < now.day:
                         status_html = '<span class="status-badge badge-absent">ABSENT</span>'
@@ -149,8 +147,8 @@ if pin_input and pin_input == selected_emp['pin']:
                     text_color = "#000000" if is_today else "#111827"
                     
                     week_cols[idx].markdown(f"""
-                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:6px 2px; text-align:center; min-height:62px;">
-                        <span style="font-size:15px; font-weight:700; color:{text_color}; display:block;">{day}</span>
+                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:4px 1px; text-align:center; min-height:54px;">
+                        <span style="font-size:13px; font-weight:700; color:{text_color}; display:block;">{day}</span>
                         {status_html}
                     </div>
                     """, unsafe_allow_html=True)
