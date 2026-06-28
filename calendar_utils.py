@@ -5,27 +5,30 @@ import calendar
 def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_start, org_end, curr_year, curr_month):
     """
     Processes logs and leaves data to calculate summary and sub-metrics for the dashboard.
-    Accepts work_days_count as a plain scalar integer (e.g. 5 or 6).
     """
     metrics = {
         "absents": 0, "on_leave": 0, "half_days": 0, "late_ins": 0,
         "early_outs": 0, "deficit_hours": 0.0, "total_wh": 0.0,
-        "days_worked": 0, "avg_wh": 0.0, "worked_days_set": set(),
+        "days_worked": 0, "avg_wh": 0.0, 
+        "worked_days_set": set(), "week_offs_set": set(),
         "approved_leave_days": set()
     }
     
     now = datetime.now()
     
-    # 1. Process Attendance Logs
+    # 1. Process Attendance Logs & Week Off Punches
     if not df_logs.empty:
         df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
         df_logs = df_logs.dropna(subset=['dt'])
         
         if not df_logs.empty:
-            metrics["worked_days_set"] = set(df_logs['dt'].dt.day.unique())
             df_logs['date'] = df_logs['dt'].dt.date
             
-            for _, group in df_logs.groupby('date'):
+            # Extract explicit action types safely
+            metrics["worked_days_set"] = set(df_logs[df_logs['action'].isin(['IN', 'OUT'])]['dt'].dt.day.unique())
+            metrics["week_offs_set"] = set(df_logs[df_logs['action'] == 'WEEK_OFF']['dt'].dt.day.unique())
+            
+            for _, group in df_logs[df_logs['action'].isin(['IN', 'OUT'])].groupby('date'):
                 day_hours = 0.0
                 last_in = None
                 sorted_group = group.sort_values('dt')
@@ -68,17 +71,12 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
                     metrics["approved_leave_days"].add(curr_step.day)
                 curr_step += timedelta(days=1)
             
-    # 3. Process Absent Days using Scalar Work Week Integer Bounds
+    # 3. Process Absent Days
     max_day = now.day if (now.year == curr_year and now.month == curr_month) else calendar.monthrange(curr_year, curr_month)[1]
     
     for d in range(1, max_day + 1):
-        check_dt = date(curr_year, curr_month, d)
-        # Python's weekday(): Monday is 1, Tuesday is 2 ... Saturday is 6, Sunday is 7
-        iso_weekday = check_dt.isoweekday()
-        
-        # FIXED: Check if the day is within the working days range (e.g. 1 to 6 for a 6-day week)
-        if iso_weekday <= work_days_count:
-            if d not in metrics["worked_days_set"] and d not in metrics["approved_leave_days"]: 
-                metrics["absents"] += 1
+        # A past day counts as absent if there is no work log, no approved leave, and no marked week off
+        if d not in metrics["worked_days_set"] and d not in metrics["approved_leave_days"] and d not in metrics["week_offs_set"]: 
+            metrics["absents"] += 1
                 
     return metrics
