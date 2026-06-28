@@ -5,7 +5,7 @@ import pandas as pd
 from database import supabase 
 
 # Ensure this call remains at the absolute top of your script
-st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered") 
+st.set_page_config(page_title="Corporate Kiosk", layout="centered") 
 
 # --- OVERRIDE SIDEBAR FILENAME DISPLAY ---
 # This safely overrides and resizes the text space to render "Mark Attendance" completely
@@ -37,7 +37,8 @@ def get_employee_by_pin(pin_code, org_id):
     res = supabase.table("employees").select("*").eq("pin", pin_code).eq("organization_id", org_id).execute() 
     return res.data[0] if res.data else None 
 
-st.title("🏢 Relational Multi-Tenant Corporate Kiosk") 
+st.title("🏢 Daily Attendance Marking Kiosk")
+st.subheader("just select your organisation and enter secret pin to Punch In")
 st.markdown("---") 
 
 # ... (the rest of your app.py execution logic remains unchanged)
