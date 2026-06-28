@@ -32,58 +32,78 @@ else:
             st.success(f"Welcome, {emp['name']} ({emp['emp_code']})")
             
             today_date = datetime.date.today()
+            today_iso = today_date.isoformat()
             
-            # Fetch logs for the current date to manage punch action toggles
-            start_today = datetime.datetime.combine(today_date, datetime.time(0,0,0)).isoformat()
-            end_today = datetime.datetime.combine(today_date, datetime.time(23,59,59)).isoformat()
-            
-            today_logs = supabase.table("attendance_logs").select("*")\
+            # --- 1. CRITICAL ENGINE CHECK: APPROVED LEAVE APPLICATION ---
+            leave_res = supabase.table("leave_applications")\
+                .select("*")\
                 .eq("employee_id", emp['id'])\
-                .gte("timestamp", start_today)\
-                .lte("timestamp", end_today)\
-                .order("timestamp", desc=True).execute()
-            
-            # Determine last action state for toggle rendering
-            last_action = today_logs.data[0]['action'] if today_logs.data else 'OUT'
-            
-            st.subheader("Select Attendance Action")
-            col1, col2, col3 = st.columns(3)
-            
-            # Action 1: Clock IN (Visible only if user is clocked OUT or hasn't started)
-            if last_action in ['OUT', 'WEEK_OFF']:
-                if col1.button("🟢 Clock IN", width="stretch"):
-                    supabase.table("attendance_logs").insert({
-                        "employee_id": emp['id'],
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "action": "IN",
-                        "log_remark": "Regular Punch In"
-                    }).execute()
-                    st.success("Shift Clock In registered successfully.")
-                    st.rerun()
+                .eq("status", "Approved")\
+                .lte("from_date", today_iso)\
+                .gte("to_date", today_iso).execute()
+                
+            if leave_res.data:
+                st.info(f"🌴 **Status:** You are on an approved leave today. Clock in options will be available after your leave period ends.")
             else:
-                col1.info("Already Clocked In")
+                # Fetch logs for the current date to determine existing states
+                start_today = datetime.datetime.combine(today_date, datetime.time(0,0,0)).isoformat()
+                end_today = datetime.datetime.combine(today_date, datetime.time(23,59,59)).isoformat()
+                
+                today_logs = supabase.table("attendance_logs")\
+                    .select("*")\
+                    .eq("employee_id", emp['id'])\
+                    .gte("timestamp", start_today)\
+                    .lte("timestamp", end_today)\
+                    .order("timestamp", desc=True).execute()
+                
+                # Check if a week-off action has already been performed today
+                is_marked_weekoff = any(l['action'] == 'WEEK_OFF' for l in today_logs.data) if today_logs.data else False
+                
+                # --- 2. CRITICAL ENGINE CHECK: WEEK-OFF ACTION LOCKOUT ---
+                if is_marked_weekoff:
+                    st.warning("🗓️ **Status:** You are on a week-off for today.")
+                else:
+                    # Determine last standard punch state for toggle rendering
+                    last_action = today_logs.data[0]['action'] if today_logs.data else 'OUT'
+                    
+                    st.subheader("Select Attendance Action")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    # Action A: Clock IN
+                    if last_action in ['OUT', 'WEEK_OFF']:
+                        if col1.button("🟢 Clock IN", use_container_width=True):
+                            supabase.table("attendance_logs").insert({
+                                "employee_id": emp['id'],
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "action": "IN",
+                                "log_remark": "Regular Punch In"
+                            }).execute()
+                            st.success("Shift Clock In registered successfully.")
+                            st.rerun()
+                    else:
+                        col1.info("Already Clocked In")
 
-            # Action 2: Clock OUT (Visible if user is currently clocked IN)
-            if last_action == 'IN':
-                if col2.button("🔴 Clock OUT", width="stretch"):
-                    supabase.table("attendance_logs").insert({
-                        "employee_id": emp['id'],
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "action": "OUT",
-                        "log_remark": "Regular Punch Out"
-                    }).execute()
-                    st.success("Shift Clock Out registered successfully.")
-                    st.rerun()
-            else:
-                col2.info("Not Clocked In")
+                    # Action B: Clock OUT
+                    if last_action == 'IN':
+                        if col2.button("🔴 Clock OUT", use_container_width=True):
+                            supabase.table("attendance_logs").insert({
+                                "employee_id": emp['id'],
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "action": "OUT",
+                                "log_remark": "Regular Punch Out"
+                            }).execute()
+                            st.success("Shift Clock Out registered successfully.")
+                            st.rerun()
+                    else:
+                        col2.info("Not Clocked In")
 
-            # Action 3: Mark Week-Off (Always accessible on this screen for manual override)
-            if col3.button("🗓️ Punch Week-Off", width="stretch"):
-                supabase.table("attendance_logs").insert({
-                    "employee_id": emp['id'],
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "action": "WEEK_OFF",
-                    "log_remark": "Manually logged week-off day"
-                }).execute()
-                st.success("Today successfully recorded as a Week-Off.")
-                st.rerun()
+                    # Action C: Punch Week-Off
+                    if col3.button("🗓️ Punch Week-Off", use_container_width=True):
+                        supabase.table("attendance_logs").insert({
+                            "employee_id": emp['id'],
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "action": "WEEK_OFF",
+                            "log_remark": "Manually logged week-off day"
+                        }).execute()
+                        st.success("Today successfully recorded as a Week-Off.")
+                        st.rerun()
