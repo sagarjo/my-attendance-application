@@ -1,144 +1,82 @@
-import streamlit as st
 import pandas as pd
-import datetime
-from calendar import monthrange
+from datetime import datetime, time, timedelta, date
+import calendar
 
-def calculate_attendance_metrics(df_logs, df_leaves, work_days_allowed_count):
+def calculate_attendance_metrics(df_logs, leaves_data, allowed_work_week, org_start, org_end, curr_year, curr_month):
     """
-    Computes all dashboard counters dynamically off raw database frames.
+    Processes logs and leaves data to calculate summary and sub-metrics for the dashboard.
     """
     metrics = {
         "absents": 0, "on_leave": 0, "half_days": 0, "late_ins": 0,
         "early_outs": 0, "deficit_hours": 0.0, "total_wh": 0.0,
-        "days_worked": 0, "avg_wh": 0.0
+        "days_worked": 0, "avg_wh": 0.0, "worked_days_set": set(),
+        "approved_leave_days": set()
     }
     
-    # If no logs and no leaves exist, return default metrics safely
-    if df_logs.empty and df_leaves.empty:
-        return metrics
-
-    # 1. Process Leaves Total Count
-    if not df_leaves.empty:
-        metrics["on_leave"] = int(df_leaves['no_of_days'].sum()) [cite: 51]
-
-    if df_logs.empty:
-        return metrics
-
-    # Parse timestamps cleanly to avoid .dt accessor string exceptions [cite: 73, 171]
-    df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce') [cite: 171]
-    df_logs['date_str'] = df_logs['dt'].dt.strftime('%Y-%m-%d')
+    now = datetime.now()
     
-    # Group matched pairs to evaluate Working Hours (WH)
-    unique_days = df_logs['date_str'].unique()
-    metrics["days_worked"] = len(unique_days) [cite: 146]
-    
-    total_wh_accumulator = 0.0
-    
-    for date_group, group in df_logs.groupby('date_str'):
-        sorted_group = group.sort_values('dt')
-        ins = sorted_group[sorted_group['action'] == 'IN']
-        outs = sorted_group[sorted_group['action'] == 'OUT']
-        
-        if not ins.empty and not outs.empty:
-            # Simple duration gap logic for matched sequence tracking [cite: 140, 145]
-            first_in = ins['dt'].iloc[0]
-            last_out = outs['dt'].iloc[-1]
-            hours = (last_out - first_in).total_seconds() / 3600.0
-            total_wh_accumulator += hours
-            
-            if hours < 4.0:
-                metrics["half_days"] += 1 [cite: 140]
-            if hours < 8.0:
-                metrics["deficit_hours"] += (8.0 - hours) [cite: 143]
-                
-    metrics["total_wh"] = round(total_wh_accumulator, 2)
-    if metrics["days_worked"] > 0:
-        metrics["avg_wh"] = round(metrics["total_wh"] / metrics["days_worked"], 2) [cite: 146]
-
-    # Note: Absents calculation uses organization integer threshold rules [cite: 228, 245]
-    # This can be expanded inside your local testing matrix pipelines.
-    return metrics
-
-def render_html_calendar(year, month, df_logs, df_leaves):
-    """
-    Generates a mobile-adaptable HTML/CSS grid containing explicit calendar dates
-    and status dot indicators parsed from live relational records[cite: 42, 100, 130].
-    """
-    # Safeguard and safely convert strings to native timezone datetimes [cite: 171]
+    # 1. Process Attendance Logs
     if not df_logs.empty:
-        df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce') [cite: 171]
-        df_logs['day_num'] = df_logs['dt'].dt.day
-    else:
-        df_logs['day_num'] = []
-
-    # Map approved leave dates
-    leave_days = set()
-    if not df_leaves.empty:
-        for _, row in df_leaves.iterrows():
-            try:
-                start = pd.to_datetime(row['from_date']).day
-                end = pd.to_datetime(row['to_date']).day
-                for d in range(start, end + 1):
-                    leave_days.add(d)
-            except:
-                pass
-
-    first_day_weekday, num_days = monthrange(year, month)
-    today_floor = datetime.date.today()
-
-    # Fluid mobile styling blocks via pure CSS Grid variables [cite: 100, 130]
-    css_styles = """
-    <style>
-    .calendar-container { font-family: system-ui; width: 100%; margin-top: 15px; }
-    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-    .calendar-header { text-align: center; font-weight: bold; padding: 5px; font-size: 12px; color: #888; }
-    .calendar-day { 
-        background: #1e293b; border-radius: 6px; min-height: 55px; padding: 6px;
-        display: flex; flex-direction: column; justify-content: space-between; align-items: center;
-        color: #f8fafc; font-weight: 600; font-size: 14px; position: relative;
-    }
-    .calendar-day.empty { background: transparent; }
-    .calendar-day.current { border: 2px solid #06b6d4; background: #0f172a; }
-    .dots-box { display: flex; gap: 4px; justify-content: center; align-items: center; min-height: 8px; }
-    .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-    .dot-worked { background-color: #22c55e; }
-    .dot-leave { background-color: #eab308; }
-    .dot-weekoff { background-color: #3b82f6; }
-    </style>
-    """
-
-    grid_html = f'{css_styles}<div class="calendar-container"><div class="calendar-grid">'
-    
-    # Weekday Headers
-    for day_name in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']:
-        grid_html += f'<div class="calendar-header">{day_name}</div>'
-
-    # Empty leading slots
-    for _ in range(first_day_weekday):
-        grid_html += '<div class="calendar-day empty"></div>'
-
-    # Populate exact calendar cells [cite: 188, 191]
-    for day in range(1, num_days + 1):
-        is_current = (today_floor.year == year and today_floor.month == month and today_floor.day == day)
-        day_class = "calendar-day current" if is_current else "calendar-day" [cite: 123]
+        df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
+        df_logs = df_logs.dropna(subset=['dt'])
         
-        # Check tracking logs
-        has_logs = day in df_logs['day_num'].values if not df_logs.empty else False
-        is_on_leave = day in leave_days
-        
-        # Append dot strings conditionally [cite: 122, 200]
-        dots = ""
-        if has_logs:
-            dots += '<span class="dot dot-worked"></span>'
-        if is_on_leave:
-            dots += '<span class="dot dot-leave"></span>'
+        if not df_logs.empty:
+            metrics["worked_days_set"] = set(df_logs['dt'].dt.day.unique())
+            df_logs['date'] = df_logs['dt'].dt.date
             
-        grid_html += f"""
-        <div class="{day_class}">
-            <div>{day}</div>
-            <div class="dots-box">{dots}</div>
-        </div>
-        """
+            for _, group in df_logs.groupby('date'):
+                day_hours = 0.0
+                last_in = None
+                sorted_group = group.sort_values('dt')
+                
+                for _, row in sorted_group.iterrows():
+                    log_time = row['dt'].time()
+                    if row['action'] == 'IN':
+                        last_in = row['dt']
+                        if log_time > org_start: 
+                            metrics["late_ins"] += 1
+                    elif row['action'] == 'OUT' and last_in is not None:
+                        day_hours += (row['dt'] - last_in).total_seconds() / 3600.0
+                        last_in = None
+                        if log_time < org_end: 
+                            metrics["early_outs"] += 1
+                            
+                metrics["total_wh"] += day_hours
+                if 0 < day_hours < 4.0: 
+                    metrics["half_days"] += 1
+                if day_hours < 8.0: 
+                    metrics["deficit_hours"] += (8.0 - day_hours)
 
-    grid_html += "</div></div>"
-    st.markdown(grid_html, unsafe_allow_html=True) [cite: 243]
+    metrics["days_worked"] = len(metrics["worked_days_set"])
+    metrics["avg_wh"] = round(metrics["total_wh"] / metrics["days_worked"], 2) if metrics["days_worked"] > 0 else 0.0
+    metrics["total_wh"] = round(metrics["total_wh"], 2)
+    metrics["deficit_hours"] = round(metrics["deficit_hours"], 1)
+
+    # 2. Process Leaves Data
+    for lv in leaves_data:
+        if lv.get('status') == 'Approved':
+            lv_from = datetime.strptime(lv['from_date'], "%Y-%m-%d").date()
+            lv_to = datetime.strptime(lv['to_date'], "%Y-%m-%d").date()
+            
+            if lv_from.month == curr_month or lv_to.month == curr_month:
+                metrics["on_leave"] += lv['no_of_days']
+                
+            curr_step = lv_from
+            while curr_step <= lv_to:
+                if curr_step.month == curr_month: 
+                    metrics["approved_leave_days"].add(curr_step.day)
+                curr_step += timedelta(days=1)
+            
+    # 3. Process Absent Days
+    # Only iterate up to the current day if looking at the active month
+    max_day = now.day if (now.year == curr_year and now.month == curr_month) else calendar.monthrange(curr_year, curr_month)[1]
+    
+    for d in range(1, max_day + 1):
+        check_dt = date(curr_year, curr_month, d)
+        mapped_db_day = (check_dt.weekday() + 1) % 7 # Map python weekday to system array format
+        
+        if mapped_db_day in allowed_work_week:
+            if d not in metrics["worked_days_set"] and d not in metrics["approved_leave_days"]: 
+                metrics["absents"] += 1
+                
+    return metrics
