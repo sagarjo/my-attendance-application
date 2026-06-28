@@ -8,10 +8,10 @@ from calendar_utils import calculate_attendance_metrics
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Inject Fluid Mobile-First Layout Rules
+# Forced Mobile CSS Grid Overrides
 st.markdown("""
 <style>
-    /* Metric KPI Row Formatting */
+    /* Metric KPI Cards Layout */
     .metric-container { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; width: 100%; }
     .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 10px 4px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
     .metric-val { font-size: 20px; font-weight: 700; margin-bottom: 1px; }
@@ -25,65 +25,68 @@ st.markdown("""
     .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 10px; }
 
-    /* FIXED CSS GRID: Forces exactly 7 columns layout on mobile viewports */
+    /* CRITICAL FIXED GRID: Forces exactly 7 columns horizontally across all devices */
     .calendar-widget-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 5px;
-        width: 100%;
-        text-align: center;
-        margin-top: 10px;
+        display: grid !important;
+        grid-template-columns: repeat(7, 1fr) !important;
+        gap: 4px !important;
+        width: 100% !important;
+        text-align: center !important;
+        margin-top: 10px !important;
+        box-sizing: border-box !important;
     }
     .cal-grid-header {
-        font-weight: 700;
-        font-size: 11px;
-        color: #4B5563;
-        padding-bottom: 4px;
-        text-transform: uppercase;
+        font-weight: 700 !important;
+        font-size: 10px !important;
+        color: #4B5563 !important;
+        padding-bottom: 4px !important;
+        text-transform: uppercase !important;
     }
     .cal-grid-day-cell {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 6px;
-        padding: 5px 1px;
-        min-height: 48px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        background-color: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 6px !important;
+        padding: 4px 1px !important;
+        min-height: 48px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
     }
     .cal-grid-day-today {
         background-color: #00E5FF !important;
-        border: 2px solid #111827 !important;
+        border: 1.5px solid #111827 !important;
     }
     .cal-grid-day-cell .num-lbl {
-        font-size: 13px;
-        font-weight: 700;
-        color: #111827;
-        display: block;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #111827 !important;
+        display: block !important;
     }
     .status-badge {
-        display: inline-block;
-        padding: 1px 2px;
-        font-size: 8px;
-        font-weight: 800;
-        border-radius: 3px;
-        margin-top: 3px;
-        width: 92%;
-        text-align: center;
-        text-transform: uppercase;
+        display: inline-block !important;
+        padding: 1px 2px !important;
+        font-size: 8px !important;
+        font-weight: 800 !important;
+        border-radius: 3px !important;
+        margin-top: 3px !important;
+        width: 92% !important;
+        text-align: center !important;
+        text-transform: uppercase !important;
+        box-sizing: border-box !important;
     }
-    .badge-present { background-color: #E6F4EA; color: #137333; }
-    .badge-absent { background-color: #FCE8E6; color: #C5221F; }
-    .badge-leave { background-color: #F3E8FF; color: #7C3AED; }
-    .badge-off { background-color: #E8F0FE; color: #1A73E8; }
+    .badge-present { background-color: #E6F4EA !important; color: #137333 !important; }
+    .badge-absent { background-color: #FCE8E6 !important; color: #C5221F !important; }
+    .badge-leave { background-color: #F3E8FF !important; color: #7C3AED !important; }
+    .badge-off { background-color: #E8F0FE !important; color: #1A73E8 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Tenant Selectors ---
+# --- Tenant Separation Context Filters ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -152,14 +155,14 @@ if pin_input and pin_input == selected_emp['pin']:
         <div class="sub-metric-grid">
             <div class="sub-metric-card"><div class="icon-val">📅 {metrics['total_wh']}</div><div class="label">Total WH</div></div>
             <div class="sub-metric-card"><div class="icon-val">💼 {metrics['days_worked']}</div><div class="label">Days Worked</div></div>
-            <div class="sub-metric-card"><div class="icon-val">📈 {res_metrics['avg_wh'] if 'res_metrics' in locals() else metrics['avg_wh']}</div><div class="label">Avg. WH</div></div>
+            <div class="sub-metric-card"><div class="icon-val">📈 {metrics['avg_wh']}</div><div class="label">Avg. WH</div></div>
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # FIXED RENDER: Pure HTML layout block generated to fix mobile horizontal wrapping
+        # Build Grid Calendar using an absolute HTML string wrapper
         html_calendar = '<div class="calendar-widget-grid">'
         for weekday_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
             html_calendar += f'<div class="cal-grid-header">{weekday_name}</div>'
