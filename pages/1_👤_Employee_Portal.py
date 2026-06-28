@@ -114,7 +114,7 @@ logs_res = supabase.table("attendance_logs")\
 
 leaves_res = supabase.table("leave_applications")\
     .select("*")\
-    .eq("emp_id", active_emp['id'])\
+    .eq("employee_id", active_emp['id'])\
     .eq("is_approved", True)\
     .execute()
 
