@@ -14,7 +14,7 @@ with tab1:
     st.write("**Geo-Fencing Boundaries**")
     lat = st.number_input("Anchor Latitude Point", format="%.6f", value=0.0)
     lng = st.number_input("Anchor Longitude Point", format="%.6f", value=0.0)
-    radius = st.slider("Authorized Workspace Radius Perimeter (Meters)", 50, 1000, 50)
+    radius = st.slider("Authorized Workspace Radius Perimeter (Meters)", 50, 500, 50)
     
     st.write("**Standard Shift Timings**")
     start_t = st.time_input("Global Operations Shift Start Time")
