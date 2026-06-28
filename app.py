@@ -1,109 +1,52 @@
 import streamlit as st
 import datetime
-import pandas as pd
-from database import supabase  # Centralized multi-tenant client handle
+from database import supabase  # Your core initialized Supabase configuration client [cite: 379]
+# Import our separated standalone calendar engine [cite: 14]
+from calendar_utils import calculate_attendance_metrics, render_html_calendar
 
-st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered")
+st.set_page_config(layout="wide") [cite: 347]
 
-def get_employee_by_pin(pin_code, org_id):
-    res = supabase.table("employees").select("*").eq("pin", pin_code).eq("organization_id", org_id).execute()
-    return res.data[0] if res.data else None
+st.title("👤 Employee Dashboard Portal")
 
-st.title("🏢 Relational Multi-Tenant Corporate Kiosk")
-st.markdown("---")
+# Mock session state for testing compliance parameters
+if "employee" not in st.session_state:
+    st.session_state["employee"] = {"id": "your-test-emp-uuid", "organization_id": "your-org-uuid"}
+if "org_work_week" not in st.session_state:
+    st.session_state["org_work_week"] = 6  # Default 6-day scalar work week logic [cite: 229]
 
-# Fetch Tenant Context
-org_res = supabase.table("organizations").select("id", "name").execute()
-org_options = {o['name']: o for o in org_res.data} if org_res.data else {}
+emp_id = st.session_state["employee"]["id"]
 
-if not org_options:
-    st.warning("No active corporate tenants found. Seed database setup tables.")
-else:
-    selected_org_name = st.selectbox("Select Organization Location", list(org_options.keys()))
-    org_data = org_options[selected_org_name]
+# --- DATA FETCHING LAYER ---
+@st.cache_data(ttl=60)
+def load_portal_data(employee_id):
+    # Fetch active logs from attendance_logs [cite: 121]
+    logs_res = supabase.table("attendance_logs").select("*").eq("employee_id", employee_id).execute() [cite: 87, 246]
     
-    pin_input = st.text_input("Enter 4-Digit Corporate Identity PIN", type="password")
+    # Fetch structural tracking info out of leave_applications table [cite: 139]
+    leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", employee_id).eq("is_approved", True).execute() [cite: 246]
     
-    if pin_input:
-        emp = get_employee_by_pin(pin_input, org_data['id'])
-        if not emp:
-            st.error("Invalid Authorization Identity Credentials.")
-        else:
-            st.success(f"Welcome, {emp['name']} ({emp['emp_code']})")
-            
-            today_date = datetime.date.today()
-            today_iso = today_date.isoformat()
-            
-            # --- 1. CRITICAL ENGINE CHECK: APPROVED LEAVE APPLICATION ---
-            leave_res = supabase.table("leave_applications")\
-                .select("*")\
-                .eq("employee_id", emp['id'])\
-                .eq("status", "Approved")\
-                .lte("from_date", today_iso)\
-                .gte("to_date", today_iso).execute()
-                
-            if leave_res.data:
-                st.info(f"🌴 **Status:** You are on an approved leave today. Clock in options will be available after your leave period ends.")
-            else:
-                # Fetch logs for the current date to determine existing states
-                start_today = datetime.datetime.combine(today_date, datetime.time(0,0,0)).isoformat()
-                end_today = datetime.datetime.combine(today_date, datetime.time(23,59,59)).isoformat()
-                
-                today_logs = supabase.table("attendance_logs")\
-                    .select("*")\
-                    .eq("employee_id", emp['id'])\
-                    .gte("timestamp", start_today)\
-                    .lte("timestamp", end_today)\
-                    .order("timestamp", desc=True).execute()
-                
-                # Check if a week-off action has already been performed today
-                is_marked_weekoff = any(l['action'] == 'WEEK_OFF' for l in today_logs.data) if today_logs.data else False
-                
-                # --- 2. CRITICAL ENGINE CHECK: WEEK-OFF ACTION LOCKOUT ---
-                if is_marked_weekoff:
-                    st.warning("🗓️ **Status:** You are on a week-off for today.")
-                else:
-                    # Determine last standard punch state for toggle rendering
-                    last_action = today_logs.data[0]['action'] if today_logs.data else 'OUT'
-                    
-                    st.subheader("Select Attendance Action")
-                    col1, col2, col3 = st.columns(3)
-                    
-                    # Action A: Clock IN
-                    if last_action in ['OUT', 'WEEK_OFF']:
-                        if col1.button("🟢 Clock IN", use_container_width=True):
-                            supabase.table("attendance_logs").insert({
-                                "employee_id": emp['id'],
-                                "timestamp": datetime.datetime.now().isoformat(),
-                                "action": "IN",
-                                "log_remark": "Regular Punch In"
-                            }).execute()
-                            st.success("Shift Clock In registered successfully.")
-                            st.rerun()
-                    else:
-                        col1.info("Already Clocked In")
+    import pandas as pd
+    return pd.DataFrame(logs_res.data), pd.DataFrame(leaves_res.data)
 
-                    # Action B: Clock OUT
-                    if last_action == 'IN':
-                        if col2.button("🔴 Clock OUT", use_container_width=True):
-                            supabase.table("attendance_logs").insert({
-                                "employee_id": emp['id'],
-                                "timestamp": datetime.datetime.now().isoformat(),
-                                "action": "OUT",
-                                "log_remark": "Regular Punch Out"
-                            }).execute()
-                            st.success("Shift Clock Out registered successfully.")
-                            st.rerun()
-                    else:
-                        col2.info("Not Clocked In")
+df_logs, df_leaves = load_portal_data(emp_id)
 
-                    # Action C: Punch Week-Off
-                    if col3.button("🗓️ Punch Week-Off", use_container_width=True):
-                        supabase.table("attendance_logs").insert({
-                            "employee_id": emp['id'],
-                            "timestamp": datetime.datetime.now().isoformat(),
-                            "action": "WEEK_OFF",
-                            "log_remark": "Manually logged week-off day"
-                        }).execute()
-                        st.success("Today successfully recorded as a Week-Off.")
-                        st.rerun()
+# --- EXECUTE EXTRACTED ANALYTICS MODULE ---
+metrics = calculate_attendance_metrics(df_logs, df_leaves, st.session_state["org_work_week"])
+
+# --- RENDER SUMMARY CARD MATRICES ---
+st.subheader("Operational Metrics Summary")
+cols = st.columns(4) [cite: 119]
+cols[0].metric("Days Worked", metrics["days_worked"]) [cite: 145]
+cols[1].metric("On Leave (Days)", metrics["on_leave"])
+cols[2].metric("Total Worked Hrs", f"{metrics['total_wh']} hrs") [cite: 144]
+cols[3].metric("Avg Daily WH", f"{metrics['avg_wh']} hrs") [cite: 146]
+
+# --- RENDER EXTRACTED CALENDAR ENGINE ---
+st.write("---") [cite: 14]
+st.subheader("🗓️ Multi-Viewport Attendance Grid")
+
+current_date = datetime.date.today()
+# Explicitly trigger our visual interface injection layout function [cite: 200]
+render_html_calendar(current_date.year, current_date.month, df_logs, df_leaves)
+
+st.success("Dashboard components compiled and routed dynamically via isolated logic engines.")
