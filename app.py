@@ -1,17 +1,43 @@
-import streamlit as st
-import datetime
-import pandas as pd
-from database import supabase  # Centralized multi-tenant client handle
+# app.py
+import streamlit as st 
+import datetime 
+import pandas as pd 
+from database import supabase # Centralized multi-tenant client handle 
 
-st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered")
+# Ensure this call is at the absolute top of your script
+st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered") 
 
-def get_employee_by_pin(pin_code, org_id):
-    res = supabase.table("employees").select("*").eq("pin", pin_code).eq("organization_id", org_id).execute()
-    return res.data[0] if res.data else None
+# --- OVERRIDE SIDEBAR FILENAME DISPLAY ---
+# This renames the main script entry in the sidebar from "app" to your preferred title
+st.sidebar.markdown(
+    """
+    <style>
+        /* Target the first page link in the multi-page sidebar nav list */
+        [data-testid="stSidebarNav"] ul li:first-child span {
+            visibility: hidden;
+            position: relative;
+        }
+        [data-testid="stSidebarNav"] ul li:first-child span::after {
+            content: "Mark Attendance";
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            white-space: nowrap;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-st.title("🏢 Relational Multi-Tenant Corporate Kiosk")
-st.markdown("---")
+def get_employee_by_pin(pin_code, org_id): 
+    res = supabase.table("employees").select("*").eq("pin", pin_code).eq("organization_id", org_id).execute() 
+    return res.data[0] if res.data else None 
 
+st.title("🏢 Relational Multi-Tenant Corporate Kiosk") 
+st.markdown("---") 
+
+# ... (rest of your app.py implementation remains completely unchanged)
 # Fetch Tenant Context
 org_res = supabase.table("organizations").select("id", "name").execute()
 org_options = {o['name']: o for o in org_res.data} if org_res.data else {}
