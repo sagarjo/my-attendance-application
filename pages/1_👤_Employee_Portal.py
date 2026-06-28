@@ -1,242 +1,198 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
-import pytz
-from database import get_organizations, supabase
+from datetime import datetime, date, timedelta, time
+import calendar
+from database import get_supabase_client
+from calendar_utils import calculate_attendance_metrics  # Importing your utility layer
 
-st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+# Page Configuration
+st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# --- Custom Mobile-Responsive CSS Flexbox/Grid System ---
-# FIXED: Using unsafe_allow_html=True to correctly compile visual calendar cards
+# Polished Layout & Badge CSS Styles Injection
 st.markdown("""
 <style>
-    .metric-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-        gap: 12px;
-        margin-bottom: 25px;
-    }
-    .metric-card {
-        background-color: #11151c;
-        border: 1px solid #222e3d;
-        border-radius: 8px;
-        padding: 14px;
-        text-align: center;
-    }
-    .metric-value {
-        font-size: 22px;
-        font-weight: bold;
-        color: #00f0ff;
-    }
-    .metric-label {
-        font-size: 11px;
-        color: #8899a6;
-        text-transform: uppercase;
-        margin-top: 4px;
-        letter-spacing: 0.5px;
-    }
-    .calendar-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 8px;
-        text-align: center;
-        margin-top: 10px;
-    }
-    .calendar-day-header {
-        font-weight: bold;
-        font-size: 13px;
-        color: #8899a6;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #222e3d;
-    }
-    .calendar-day {
-        background-color: #1a233a;
-        border: 1px solid #253556;
-        border-radius: 6px;
-        padding: 10px 4px;
-        min-height: 60px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: center;
-        color: #ffffff !important;
-        font-size: 14px;
-    }
-    .status-dot {
-        height: 7px;
-        width: 7px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-top: 6px;
-    }
-    .dot-worked { background-color: #00ff66; box-shadow: 0 0 6px #00ff66; }
-    .dot-leave { background-color: #ffcc00; box-shadow: 0 0 6px #ffcc00; }
-    .dot-weekoff { background-color: #555555; }
-    .dot-absent { background-color: #ff3333; box-shadow: 0 0 6px #ff3333; }
+    .metric-container { display: flex; flex-wrap: nowrap; gap: 10px; margin-bottom: 20px; width: 100%; }
+    .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 12px 6px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .metric-val { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+    .metric-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .bg-absent { background-color: #FFF0F2; color: #DC2626; }
+    .bg-leave { background-color: #F3E8FF; color: #7C3AED; }
+    .bg-half { background-color: #FFF7ED; color: #EA580C; }
+    
+    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 10px 4px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .sub-metric-card .icon-val { font-size: 14px; font-weight: 700; color: #111827; }
+    .sub-metric-card .label { color: #6B7280; font-size: 11px; margin-top: 2px; }
+
+    .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; font-weight: bold; border-radius: 4px; margin-top: 4px; text-align: center; width: 85%; }
+    .badge-present { background-color: #E6F4EA; color: #137333; }
+    .badge-absent { background-color: #FCE8E6; color: #C5221F; }
+    .badge-leave { background-color: #F3E8FF; color: #7C3AED; }
+    .badge-off { background-color: #F1F3F4; color: #5F6368; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("👤 Corporate Employee Portal")
+st.title("Attendance Portal")
+supabase = get_supabase_client()
 
-# --- Context Initialization & Database Connections ---
-try:
-    orgs = get_organizations()
-except:
-    orgs = []
+# --- Tenant Selectors Context Setup ---
+org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
+orgs = org_response.data or []
 
 if not orgs:
-    st.info("Please set up an organization and employee structure first.")
+    st.warning("No organizations configured.")
     st.stop()
 
 org_map = {o['name']: o for o in orgs}
-selected_org_name = st.selectbox("Select Organization Context", list(org_map.keys()))
-active_org = org_map[selected_org_name]
+selected_org_name = st.selectbox("Verify Organization", list(org_map.keys()))
+selected_org = org_map[selected_org_name]
 
-# FIXED: Safely fetch simple integer work week tracking metrics (Defaulting to 6)
-work_days_allowed_count = int(active_org.get('work_week', 6)) 
-
-# Employee Profile Retrieval Sequence
-emp_res = supabase.table("employees").select("*").eq("organization_id", active_org['id']).execute()
-employees = emp_res.data
+emp_response = supabase.table("employees").select("id, name, pin").eq("organization_id", selected_org['id']).execute()
+employees = emp_response.data or []
 
 if not employees:
-    st.warning("No employees found in this business unit.")
+    st.info("No employee profiles found.")
     st.stop()
 
 emp_map = {e['name']: e for e in employees}
-selected_emp = st.selectbox("Select Employee Profile", list(emp_map.keys()))
-active_emp = emp_map[selected_emp]
+selected_emp_name = st.selectbox("Select Your Profile", list(emp_map.keys()))
+selected_emp = emp_map[selected_emp_name]
 
-# --- Fetch Operational Logs & Leaves from Backend Tables ---
-now = datetime.now(pytz.utc)
-start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+pin_input = st.text_input("Confirm PIN Access", type="password", max_chars=4)
 
-logs_res = supabase.table("attendance_logs")\
-    .select("*")\
-    .eq("employee_id", active_emp['id'])\
-    .gte("timestamp", start_of_month.isoformat())\
-    .execute()
-
-leaves_res = supabase.table("leave_applications")\
-    .select("*")\
-    .eq("employee_id", active_emp['id'])\
-    .eq("is_approved", True)\
-    .execute()
-
-# --- Process Analytics Engine via Pandas ---
-df_logs = pd.DataFrame(logs_res.data)
-approved_leaves = leaves_res.data
-
-worked_dates = set()
-week_off_dates = set()
-
-if not df_logs.empty:
-    df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True)
-    df_logs['date_str'] = df_logs['dt'].dt.strftime('%Y-%m-%d')
+if pin_input and pin_input == selected_emp['pin']:
+    st.success(f"Verified Profile: {selected_emp['name']}")
     
-    worked_dates = set(df_logs[df_logs['action'].isin(['IN', 'OUT'])]['date_str'].unique())
-    week_off_dates = set(df_logs[df_logs['action'] == 'WEEK_OFF']['date_str'].unique())
-
-leave_dates = set()
-for l in approved_leaves:
-    try:
-        start_d = datetime.strptime(l['from_date'], '%Y-%m-%d').date()
-        end_d = datetime.strptime(l['to_date'], '%Y-%m-%d').date()
-        curr = start_d
-        while curr <= end_d:
-            leave_dates.add(curr.strftime('%Y-%m-%d'))
-            curr += timedelta(days=1)
-    except Exception:
-        pass
-
-# --- Compute True Absenteeism & Matrix Mappings via Scalar Configuration ---
-absent_count = 0
-total_days_in_month_to_date = now.day
-calendar_days_data = {}
-
-for day in range(1, total_days_in_month_to_date + 1):
-    check_date = start_of_month.replace(day=day)
-    date_str = check_date.strftime('%Y-%m-%d')
+    # Current active targets setup
+    now = datetime.now()
+    curr_year, curr_month = now.year, now.month
+    start_date = date(curr_year, curr_month, 1)
+    end_date = date(curr_year, curr_month, calendar.monthrange(curr_year, curr_month)[1])
     
-    # ISO weekday: Mon = 1, Tue = 2, Wed = 3, Thu = 4, Fri = 5, Sat = 6, Sun = 7
-    iso_weekday = check_date.isoweekday()
+    # Query database records
+    logs_res = supabase.table("attendance_logs").select("timestamp, action").eq("employee_id", selected_emp['id']).gte("timestamp", start_date.isoformat()).lte("timestamp", (end_date + timedelta(days=1)).isoformat()).execute()
+    leaves_res = supabase.table("leave_applications").select("*").eq("employee_id", selected_emp['id']).execute()
     
-    # Core Evaluation Engine: Scheduled working window depends on the raw work day limit count
-    is_scheduled_workday = iso_weekday <= work_days_allowed_count
+    logs_data = logs_res.data or []
+    leaves_data = leaves_res.data or []
     
-    if date_str in worked_dates:
-        status = "Worked"
-    elif date_str in leave_dates:
-        status = "On Leave"
-    elif date_str in week_off_dates or not is_scheduled_workday:
-        status = "Week Off"
-    else:
-        status = "Absent"
-        absent_count += 1
+    # Shift parameters setup
+    shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
+    shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
+    org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
+    org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
+    allowed_work_week = selected_org.get('work_week') or [1, 2, 3, 4, 5]
+    
+    # --- Executing Calculation via Modular Utility File ---
+    df_logs = pd.DataFrame(logs_data)
+    res_metrics = calculate_attendance_metrics(
+        df_logs, leaves_data, allowed_work_week, 
+        org_start, org_end, curr_year, curr_month
+    )
+    
+    # Navigation sub tabs layout structure
+    tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
+    
+    with tab_summary:
+        # High Level KPI Metric Display Block
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-card bg-absent"><div class="metric-val">{res_metrics['absents']}</div><div class="metric-lbl">Absents</div></div>
+            <div class="metric-card bg-leave"><div class="metric-val">{res_metrics['on_leave']}</div><div class="metric-lbl">On Leave</div></div>
+            <div class="metric-card bg-half"><div class="metric-val">{res_metrics['half_days']}</div><div class="metric-lbl">Half Days</div></div>
+        </div>
+        <div class="sub-metric-grid">
+            <div class="sub-metric-card"><div class="icon-val">🕒 {res_metrics['late_ins']}</div><div class="label">Late In</div></div>
+            <div class="sub-metric-card"><div class="icon-val">⏰ {res_metrics['early_outs']}</div><div class="label">Early Out</div></div>
+            <div class="sub-metric-card"><div class="icon-val">⏱️ {res_metrics['deficit_hours']}h</div><div class="label">Deficit</div></div>
+        </div>
+        <div class="sub-metric-grid">
+            <div class="sub-metric-card"><div class="icon-val">📅 {res_metrics['total_wh']}</div><div class="label">Total WH</div></div>
+            <div class="sub-metric-card"><div class="icon-val">💼 {res_metrics['days_worked']}</div><div class="label">Days Worked</div></div>
+            <div class="sub-metric-card"><div class="icon-val">📈 {res_metrics['avg_wh']}</div><div class="label">Avg. WH</div></div>
+        </div>
+        """, unsafe_allow_html=True)
         
-    calendar_days_data[day] = status
-
-# --- Render Metric UI Performance Tiles ---
-st.subheader("📊 Performance Trackers")
-st.markdown(f"""
-<div class="metric-container">
-    <div class="metric-card">
-        <div class="metric-value">{absent_count}</div>
-        <div class="metric-label">Absents</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-value">{len(leave_dates)}</div>
-        <div class="metric-label">On Leave</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-value">{len(worked_dates)}</div>
-        <div class="metric-label">Days Worked</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-value">{work_days_allowed_count} Days</div>
-        <div class="metric-label">Work Week</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# --- Render Synchronized Attendance Calendar Grid Matrix ---
-st.subheader("🗓️ Operational Attendance Grid")
-
-# Render Horizontal Weekday Headers
-days_headers = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-header_cols = st.columns(7)
-for idx, header in enumerate(days_headers):
-    header_cols[idx].markdown(f'<div class="calendar-day-header">{header}</div>', unsafe_allow_html=True)
-
-# Compute First Day Offset Padding Configuration
-first_day_weekday = start_of_month.isoweekday()
-
-# FIXED: Wrapped calendar elements inside a single macro markdown block using unsafe_allow_html=True
-grid_html = '<div class="calendar-grid">'
-
-# Append hidden blocks to shift numbers to correct weekday columns
-for _ in range(first_day_weekday - 1):
-    grid_html += '<div style="visibility: hidden;"></div>'
-
-# Populate each calendar tracking index element
-for day in range(1, total_days_in_month_to_date + 1):
-    day_status = calendar_days_data[day]
-    
-    if day_status == "Worked":
-        dot_class = "dot-worked"
-    elif day_status == "On Leave":
-        dot_class = "dot-leave"
-    elif day_status == "Week Off":
-        dot_class = "dot-weekoff"
-    else:
-        dot_class = "dot-absent"
+        st.markdown("---")
+        st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-    grid_html += f"""
-    <div class="calendar-day">
-        <strong>{day}</strong>
-        <span class="status-dot {dot_class}"></span>
-    </div>
-    """
+        # Calendar Matrix UI rendering using native Streamlit safe spacing layout grids
+        days_weeks = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        header_cols = st.columns(7)
+        for i, weekday_name in enumerate(days_weeks):
+            header_cols[i].markdown(f"<p style='text-align:center;font-weight:bold;margin:0;color:#4B5563;'>{weekday_name}</p>", unsafe_allow_html=True)
+            
+        cal_matrix = calendar.monthcalendar(curr_year, curr_month)
+        for week in cal_matrix:
+            week_cols = st.columns(7)
+            for idx, day in enumerate(week):
+                if day == 0:
+                    week_cols[idx].write("")
+                else:
+                    is_today = (day == now.day)
+                    c_date = date(curr_year, curr_month, day)
+                    db_day_idx = (c_date.weekday() + 1) % 7
+                    
+                    # Compute status badge
+                    if day in res_metrics["worked_days_set"]:
+                        status_html = '<span class="status-badge badge-present">PRESENT</span>'
+                    elif day in res_metrics["approved_leave_days"]:
+                        status_html = '<span class="status-badge badge-leave">LEAVE</span>'
+                    elif db_day_idx not in allowed_work_week:
+                        status_html = '<span class="status-badge badge-off">WEEK OFF</span>'
+                    elif day < now.day:
+                        status_html = '<span class="status-badge badge-absent">ABSENT</span>'
+                    else:
+                        status_html = '<span class="status-badge" style="background:#F3F4F6;color:#9CA3AF;">—</span>'
+                        
+                    bg_color = "#00E5FF" if is_today else "#FFFFFF"
+                    border_style = "2px solid #111827" if is_today else "1px solid #E5E7EB"
+                    text_color = "#000000" if is_today else "#111827"
+                    
+                    week_cols[idx].markdown(f"""
+                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:8px 2px; text-align:center; min-height:65px;">
+                        <span style="font-size:16px; font-weight:700; color:{text_color}; display:block;">{day}</span>
+                        {status_html}
+                    </div>
+                    """, unsafe_allow_html=True)
 
-grid_html += "</div>"
-st.markdown(grid_html, unsafe_allow_html=True)
+    with tab_apply:
+        st.subheader("Apply for Leave")
+        with st.form("leave_application_form", clear_on_submit=True):
+            reason = st.text_input("Reason for Leave", placeholder="Medical treatment, Family function, etc.")
+            col_f, col_t = st.columns(2)
+            f_date = col_f.date_input("From Date", min_value=date.today())
+            t_date = col_t.date_input("To Date", min_value=date.today())
+            submit_btn = st.form_submit_button('Submit Leave Application')
+            
+            if submit_btn:
+                if t_date < f_date:
+                    st.error("Error: 'To Date' cannot occur before 'From Date'.")
+                elif not reason.strip():
+                    st.error("Please enter a valid reason.")
+                else:
+                    delta_days = (t_date - f_date).days + 1
+                    supabase.table("leave_applications").insert({
+                        "employee_id": selected_emp['id'], "leave_reason": reason,
+                        "from_date": f_date.isoformat(), "to_date": t_date.isoformat(),
+                        "no_of_days": delta_days, "status": "Pending", "is_approved": False
+                    }).execute()
+                    st.success("Leave request submitted successfully!")
+                    st.rerun()
+                        
+        st.markdown("---")
+        st.subheader("Your Leave History & Feedback")
+        if leaves_data:
+            df_history = pd.DataFrame(leaves_data)[[
+                'from_date', 'to_date', 'no_of_days', 'leave_reason', 'status', 'rejection_reason'
+            ]].rename(columns={
+                'from_date': 'From', 'to_date': 'To', 'no_of_days': 'Days', 
+                'leave_reason': 'Reason', 'status': 'Approval Status', 'rejection_reason': 'Remarks / Reject Reason'
+            })
+            df_history['Remarks / Reject Reason'] = df_history['Remarks / Reject Reason'].fillna("—")
+            st.dataframe(df_history, use_container_width=True, hide_index=True)
+        else:
+            st.info("No historical leaves records found.")
+
+    with tab_holidays:
+        st.info("Corporate Holiday rosters tracking active.")
