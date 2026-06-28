@@ -8,10 +8,10 @@ from calendar_utils import calculate_attendance_metrics
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Advanced Mobile-First Responsive CSS Architecture Injection
+# Inject Fluid Mobile-First Layout Rules
 st.markdown("""
 <style>
-    /* Metric Cards Grid Alignment */
+    /* Metric KPI Row Formatting */
     .metric-container { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; width: 100%; }
     .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 10px 4px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
     .metric-val { font-size: 20px; font-weight: 700; margin-bottom: 1px; }
@@ -25,8 +25,54 @@ st.markdown("""
     .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 10px; }
 
-    /* Ultra Mobile-Optimized Calendar Cell Sizing Badges */
-    .status-badge { display: inline-block; padding: 1px 2px; font-size: 9px; font-weight: 800; border-radius: 4px; margin-top: 4px; text-align: center; width: 95%; text-transform: uppercase; }
+    /* FIXED CSS GRID: Forces exactly 7 columns layout on mobile viewports */
+    .calendar-widget-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        width: 100%;
+        text-align: center;
+        margin-top: 10px;
+    }
+    .cal-grid-header {
+        font-weight: 700;
+        font-size: 11px;
+        color: #4B5563;
+        padding-bottom: 4px;
+        text-transform: uppercase;
+    }
+    .cal-grid-day-cell {
+        background-color: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        padding: 5px 1px;
+        min-height: 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .cal-grid-day-today {
+        background-color: #00E5FF !important;
+        border: 2px solid #111827 !important;
+    }
+    .cal-grid-day-cell .num-lbl {
+        font-size: 13px;
+        font-weight: 700;
+        color: #111827;
+        display: block;
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 1px 2px;
+        font-size: 8px;
+        font-weight: 800;
+        border-radius: 3px;
+        margin-top: 3px;
+        width: 92%;
+        text-align: center;
+        text-transform: uppercase;
+    }
     .badge-present { background-color: #E6F4EA; color: #137333; }
     .badge-absent { background-color: #FCE8E6; color: #C5221F; }
     .badge-leave { background-color: #F3E8FF; color: #7C3AED; }
@@ -37,7 +83,7 @@ st.markdown("""
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Multi-Tenant Fetch Selectors ---
+# --- Tenant Selectors ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -78,80 +124,76 @@ if pin_input and pin_input == selected_emp['pin']:
     
     try:
         work_days_count = int(selected_org.get('work_week', 6))
-    except (ValueError, TypeError):
+    except:
         work_days_count = 6
-
+        
     shift_start_str = selected_org.get('shift_start_time') or '09:00:00'
     shift_end_str = selected_org.get('shift_end_time') or '18:00:00'
     org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
     org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
     
-    df_logs = pd.DataFrame(logs_data)
-    res_metrics = calculate_attendance_metrics(
-        df_logs, leaves_data, work_days_count, 
-        org_start, org_end, curr_year, curr_month
-    )
-    
+    # Calculate Data Points Metrics using our module
+    metrics = calculate_attendance_metrics(pd.DataFrame(logs_data), leaves_data, work_days_count, org_start, org_end, curr_year, curr_month)
+
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
     
     with tab_summary:
         st.markdown(f"""
         <div class="metric-container">
-            <div class="metric-card bg-absent"><div class="metric-val">{res_metrics['absents']}</div><div class="metric-lbl">Absents</div></div>
-            <div class="metric-card bg-leave"><div class="metric-val">{res_metrics['on_leave']}</div><div class="metric-lbl">On Leave</div></div>
-            <div class="metric-card bg-half"><div class="metric-val">{res_metrics['half_days']}</div><div class="metric-lbl">Half Days</div></div>
+            <div class="metric-card bg-absent"><div class="metric-val">{metrics['absents']}</div><div class="metric-lbl">Absents</div></div>
+            <div class="metric-card bg-leave"><div class="metric-val">{metrics['on_leave']}</div><div class="metric-lbl">On Leave</div></div>
+            <div class="metric-card bg-half"><div class="metric-val">{metrics['half_days']}</div><div class="metric-lbl">Half Days</div></div>
         </div>
         <div class="sub-metric-grid">
-            <div class="sub-metric-card"><div class="icon-val">🕒 {res_metrics['late_ins']}</div><div class="label">Late In</div></div>
-            <div class="sub-metric-card"><div class="icon-val">⏰ {res_metrics['early_outs']}</div><div class="label">Early Out</div></div>
-            <div class="sub-metric-card"><div class="icon-val">⏱️ {res_metrics['deficit_hours']}h</div><div class="label">Deficit</div></div>
+            <div class="sub-metric-card"><div class="icon-val">🕒 {metrics['late_ins']}</div><div class="label">Late In</div></div>
+            <div class="sub-metric-card"><div class="icon-val">⏰ {metrics['early_outs']}</div><div class="label">Early Out</div></div>
+            <div class="sub-metric-card"><div class="icon-val">⏱️ {metrics['deficit_hours']}h</div><div class="label">Deficit</div></div>
         </div>
         <div class="sub-metric-grid">
-            <div class="sub-metric-card"><div class="icon-val">📅 {res_metrics['total_wh']}</div><div class="label">Total WH</div></div>
-            <div class="sub-metric-card"><div class="icon-val">💼 {res_metrics['days_worked']}</div><div class="label">Days Worked</div></div>
-            <div class="sub-metric-card"><div class="icon-val">📈 {res_metrics['avg_wh']}</div><div class="label">Avg. WH</div></div>
+            <div class="sub-metric-card"><div class="icon-val">📅 {metrics['total_wh']}</div><div class="label">Total WH</div></div>
+            <div class="sub-metric-card"><div class="icon-val">💼 {metrics['days_worked']}</div><div class="label">Days Worked</div></div>
+            <div class="sub-metric-card"><div class="icon-val">📈 {res_metrics['avg_wh'] if 'res_metrics' in locals() else metrics['avg_wh']}</div><div class="label">Avg. WH</div></div>
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        days_weeks = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-        header_cols = st.columns(7)
-        for i, weekday_name in enumerate(days_weeks):
-            header_cols[i].markdown(f"<p style='text-align:center;font-weight:700;font-size:11px;margin:0;color:#4B5563;'>{weekday_name}</p>", unsafe_allow_html=True)
+        # FIXED RENDER: Pure HTML layout block generated to fix mobile horizontal wrapping
+        html_calendar = '<div class="calendar-widget-grid">'
+        for weekday_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
+            html_calendar += f'<div class="cal-grid-header">{weekday_name}</div>'
             
         cal_matrix = calendar.monthcalendar(curr_year, curr_month)
         for week in cal_matrix:
-            week_cols = st.columns(7)
             for idx, day in enumerate(week):
                 if day == 0:
-                    week_cols[idx].write("")
+                    html_calendar += '<div></div>'
                 else:
                     is_today = (day == now.day)
+                    cell_class = "cal-grid-day-cell cal-grid-day-today" if is_today else "cal-grid-day-cell"
+                    text_color = "#000000" if is_today else "#111827"
                     
-                    # Status text badge evaluation parameters matching explicit kiosk actions
-                    if day in res_metrics["worked_days_set"]:
+                    # Status text badge generation tracking logic parameters
+                    if day in metrics["worked_days_set"]:
                         status_html = '<span class="status-badge badge-present">PRESENT</span>'
-                    elif day in res_metrics["approved_leave_days"]:
+                    elif day in metrics["approved_leave_days"]:
                         status_html = '<span class="status-badge badge-leave">LEAVE</span>'
-                    elif day in res_metrics["week_offs_set"]:
+                    elif day in metrics["week_offs_set"]:
                         status_html = '<span class="status-badge badge-off">WEEK OFF</span>'
                     elif day < now.day:
                         status_html = '<span class="status-badge badge-absent">ABSENT</span>'
                     else:
                         status_html = '<span class="status-badge" style="background:#F3F4F6;color:#9CA3AF;">—</span>'
                         
-                    bg_color = "#00E5FF" if is_today else "#FFFFFF"
-                    border_style = "2px solid #111827" if is_today else "1px solid #E5E7EB"
-                    text_color = "#000000" if is_today else "#111827"
-                    
-                    week_cols[idx].markdown(f"""
-                    <div style="background-color:{bg_color}; border:{border_style}; border-radius:8px; padding:4px 1px; text-align:center; min-height:54px;">
-                        <span style="font-size:13px; font-weight:700; color:{text_color}; display:block;">{day}</span>
+                    html_calendar += f"""
+                    <div class="{cell_class}">
+                        <span class="num-lbl" style="color:{text_color};">{day}</span>
                         {status_html}
                     </div>
-                    """, unsafe_allow_html=True)
+                    """
+        html_calendar += '</div>'
+        st.markdown(html_calendar, unsafe_allow_html=True)
 
     with tab_apply:
         st.subheader("Apply for Leave")
