@@ -5,83 +5,36 @@ import calendar
 from database import get_supabase_client
 from calendar_utils import calculate_attendance_metrics
 
-# Page Configuration
+# Page Configurations
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Modern Layout Styling Injection
+# Inject High-Visibility Fixed Width Mobile CSS Rules
 st.markdown("""
 <style>
-    /* Metric KPI Layout */
-    .metric-container { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; width: 100%; }
-    .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 10px 4px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
-    .metric-val { font-size: 20px; font-weight: 700; margin-bottom: 1px; }
-    .metric-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #6B7280; }
+    /* Metric Card Spacing Layouts */
+    .metric-container { display: flex; flex-wrap: nowrap; gap: 6px; margin-bottom: 12px; width: 100%; }
+    .metric-card { flex: 1; min-width: 0; border-radius: 10px; padding: 10px 2px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    .metric-val { font-size: 18px; font-weight: 700; margin-bottom: 1px; }
+    .metric-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; color: #6B7280; }
     .bg-absent { background-color: #FFF0F2; color: #DC2626; }
     .bg-leave { background-color: #F3E8FF; color: #7C3AED; }
     .bg-half { background-color: #FFF7ED; color: #EA580C; }
     
-    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
-    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 10px; padding: 8px 2px; text-align: center; }
-    .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
-    .sub-metric-card .label { color: #6B7280; font-size: 10px; }
+    .sub-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+    .sub-metric-card { background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 8px; padding: 6px 2px; text-align: center; }
+    .sub-metric-card .icon-val { font-size: 12px; font-weight: 700; color: #111827; }
+    .sub-metric-card .label { color: #6B7280; font-size: 9px; }
 
-    /* HTML Table Matrix - Locks columns horizontally on tiny mobile displays */
-    .mobile-table-calendar {
-        width: 100% !important;
-        border-collapse: separate !important;
-        border-spacing: 4px !important;
-        table-layout: fixed !important;
-        margin-top: 10px !important;
-    }
-    .mobile-table-calendar th {
-        font-size: 10px !important;
-        font-weight: 700 !important;
-        color: #4B5563 !important;
-        text-transform: uppercase !important;
-        text-align: center !important;
-        padding-bottom: 6px !important;
-        width: 14.28% !important;
-    }
-    .mobile-table-calendar td {
-        vertical-align: middle !important;
-        text-align: center !important;
-        padding: 0 !important;
-        width: 14.28% !important;
-    }
-    .cal-cell-inner {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 6px;
-        padding: 5px 1px;
-        min-height: 48px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-    }
-    .cal-cell-today {
-        background-color: #00E5FF !important;
-        border: 1.5px solid #111827 !important;
-    }
-    .cal-cell-inner .day-num {
-        font-size: 12px;
-        font-weight: 700;
-        margin-bottom: 2px;
-        display: block;
-    }
-    .status-badge {
-        display: inline-block !important;
-        padding: 1px 2px !important;
-        font-size: 8px !important;
-        font-weight: 800 !important;
-        border-radius: 3px !important;
-        width: 92% !important;
-        text-align: center !important;
-        text-transform: uppercase !important;
-        box-sizing: border-box !important;
-        line-height: 1.1 !important;
-    }
+    /* Strict Inflexible Table Design */
+    .mobile-table-calendar { width: 100% !important; border-collapse: separate !important; border-spacing: 3px !important; table-layout: fixed !important; }
+    .mobile-table-calendar th { font-size: 10px !important; font-weight: 700 !important; color: #4B5563 !important; text-transform: uppercase !important; text-align: center !important; padding-bottom: 4px !important; }
+    .mobile-table-calendar td { vertical-align: middle !important; text-align: center !important; padding: 0 !important; width: 14.28% !important; }
+    
+    .cal-cell-inner { background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 4px 1px; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .cal-cell-today { background-color: #00E5FF !important; border: 1.5px solid #111827 !important; }
+    .cal-cell-inner .day-num { font-size: 11px; font-weight: 700; margin-bottom: 1px; display: block; }
+    
+    .status-badge { display: inline-block !important; padding: 1px 2px !important; font-size: 8px !important; font-weight: 800 !important; border-radius: 3px !important; width: 94% !important; text-align: center; text-transform: uppercase; line-height: 1 !important; }
     .badge-present { background-color: #E6F4EA !important; color: #137333 !important; }
     .badge-absent { background-color: #FCE8E6 !important; color: #C5221F !important; }
     .badge-leave { background-color: #F3E8FF !important; color: #7C3AED !important; }
@@ -92,7 +45,7 @@ st.markdown("""
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Multi-Tenant Fetch Configuration Block ---
+# --- Load Multi-Tenant Dropdowns ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -167,47 +120,40 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Build Table Matrix Calendar String
-        html_calendar = '<table class="mobile-table-calendar"><thead><tr>'
-        for weekday_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
-            html_calendar += f'<th>{weekday_name}</th>'
-        html_calendar += '</tr></thead><tbody>'
-            
+        # FIXED: Built calendar table as a single compressed string block to bypass parser splitting triggers
+        html_cal = '<table class="mobile-table-calendar"><thead><tr>'
+        for day_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
+            html_cal += f'<th>{day_name}</th>'
+        html_cal += '</tr></thead><tbody>'
+        
         cal_matrix = calendar.monthcalendar(curr_year, curr_month)
         for week in cal_matrix:
-            html_calendar += '<tr>'
+            html_cal += '<tr>'
             for idx, day in enumerate(week):
                 if day == 0:
-                    html_calendar += '<td></td>'
+                    html_cal += '<td></td>'
                 else:
                     is_today = (day == now.day)
-                    cell_class = "cal-cell-inner cal-cell-today" if is_today else "cal-cell-inner"
-                    lbl_color = "#000000" if is_today else "#111827"
+                    c_inner = "cal-cell-inner cal-cell-today" if is_today else "cal-cell-inner"
+                    lbl_c = "#000000" if is_today else "#111827"
                     
                     if day in metrics["worked_days_set"]:
-                        status_html = '<span class="status-badge badge-present">PRESENT</span>'
+                        badge = '<span class="status-badge badge-present">PRESENT</span>'
                     elif day in metrics["approved_leave_days"]:
-                        status_html = '<span class="status-badge badge-leave">LEAVE</span>'
+                        badge = '<span class="status-badge badge-leave">LEAVE</span>'
                     elif day in metrics["week_offs_set"]:
-                        status_html = '<span class="status-badge badge-off">WEEK OFF</span>'
+                        badge = '<span class="status-badge badge-off">WEEK OFF</span>'
                     elif day < now.day:
-                        status_html = '<span class="status-badge badge-absent">ABSENT</span>'
+                        badge = '<span class="status-badge badge-absent">ABSENT</span>'
                     else:
-                        status_html = '<span class="status-badge" style="background:#F3F4F6;color:#9CA3AF;">—</span>'
-                        
-                    html_calendar += f"""
-                    <td>
-                        <div class="{cell_class}">
-                            <span class="day-num" style="color:{lbl_color};">{day}</span>
-                            {status_html}
-                        </div>
-                    </td>
-                    """
-            html_calendar += '</tr>'
-        html_calendar += '</tbody></table>'
+                        badge = '<span class="status-badge" style="background:#F3F4F6;color:#9CA3AF;">—</span>'
+                    
+                    html_cal += f'<td><div class="{c_inner}"><span class="day-num" style="color:{lbl_c};">{day}</span>{badge}</div></td>'
+            html_cal += '</tr>'
+        html_cal += '</tbody></table>'
         
-        # RENDERING PORT: Renders explicit HTML components directly into raw page markup view safely
-        st.markdown(html_calendar, unsafe_allow_html=True)
+        # Force strict single string asset injection block execution
+        st.markdown(html_cal, unsafe_allow_html=True)
 
     with tab_apply:
         st.subheader("Apply for Leave")
