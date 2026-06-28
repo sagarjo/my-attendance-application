@@ -4,7 +4,7 @@ import calendar
 
 def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_start, org_end, curr_year, curr_month):
     """
-    Computes summary data counters and maps correct day state sets.
+    Processes logs and leaves data to calculate summary and sub-metrics for the dashboard.
     """
     metrics = {
         "absents": 0, "on_leave": 0, "half_days": 0, "late_ins": 0,
@@ -56,7 +56,7 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
     metrics["total_wh"] = round(metrics["total_wh"], 2)
     metrics["deficit_hours"] = round(metrics["deficit_hours"], 1)
 
-    # 2. Process Approved Leaves
+    # 2. Process Leaves Data
     for lv in leaves_data:
         if lv.get('status') == 'Approved':
             lv_from = datetime.strptime(lv['from_date'], "%Y-%m-%d").date()
@@ -71,7 +71,7 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
                     metrics["approved_leave_days"].add(curr_step.day)
                 curr_step += timedelta(days=1)
             
-    # 3. Process Absents (past unpunched days default to ABSENT only if not explicitly marked week off)
+    # 3. Process Absent Days
     max_day = now.day if (now.year == curr_year and now.month == curr_month) else calendar.monthrange(curr_year, curr_month)[1]
     
     for d in range(1, max_day + 1):
