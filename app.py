@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 from database import supabase  # Your core initialized Supabase configuration client [cite: 379]
 # Import our separated standalone calendar engine [cite: 14]
-from calendar_utils import calculate_attendance_metrics, render_html_calendar
+from calendar_utils import calculate_attendance_metrics
 
 st.set_page_config(layout="wide") [cite: 347]
 
