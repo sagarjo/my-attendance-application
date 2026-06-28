@@ -1,7 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from database import supabase
+from database import supabase  # Centralized multi-tenant client handle
 
 st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered")
 
@@ -63,6 +63,10 @@ def check_missed_punch_lockout(employee_id, week_offs, work_week):
         
     return len(unapproved_logs.data) > 0
 
+# --- TESTING MODE OVERRIDE SIDEBAR OPTION ---
+st.sidebar.header("⚙️ Testing Configuration")
+testing_mode = st.sidebar.checkbox("Bypass Lockouts (Testing Mode)", value=False, help="Enable this to completely turn off the missed punch verification blocker for fluid frontend testing.")
+
 st.title("🏢 Relational Multi-Tenant Corporate Kiosk")
 st.markdown("---")
 
@@ -82,6 +86,9 @@ else:
         if not emp:
             st.error("Invalid Authorization Identity Credentials.")
         else:
+            if testing_mode:
+                st.sidebar.warning("⚡ Testing Mode Active: Lockout rules are currently ignored.")
+                
             st.success(f"Welcome, {emp['name']} ({emp['emp_code']})")
             
             auto_close_hanging_shifts(emp['id'])
@@ -99,12 +106,12 @@ else:
             if leave_res.data:
                 st.info("🚨 Kiosk Lockout: You are officially scheduled on an Approved Corporate Leave today.")
             else:
-                is_locked_out = check_missed_punch_lockout(emp['id'], emp['week_offs'], org_data['work_week'])
+                # Check Lockout rules if Testing mode is False
+                is_locked_out = check_missed_punch_lockout(emp['id'], emp['week_offs'], org_data['work_week']) if not testing_mode else False
                 
                 if is_locked_out:
                     st.error("❌ Attendance System Locked Out: You missed a valid Clock In on your last scheduled working shift. Get administrative sign-off first.")
                     if st.button("File Exception Report for Admin Review"):
-                        # This insert will pass seamlessly now once Step 1 SQL is run!
                         supabase.table("attendance_logs").insert({
                             "employee_id": emp['id'],
                             "timestamp": datetime.datetime.now().isoformat(),
@@ -128,7 +135,6 @@ else:
                         st.warning("🗓️ Operational Notice: Today is designated as a standard Week-Off.")
                         if not is_marked_weekoff:
                             if st.button("Formally Record Today as Week-Off in Logs"):
-                                # This insert will pass seamlessly now once Step 1 SQL is run!
                                 supabase.table("attendance_logs").insert({
                                     "employee_id": emp['id'],
                                     "timestamp": datetime.datetime.now().isoformat(),
