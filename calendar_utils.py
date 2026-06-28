@@ -2,9 +2,10 @@ import pandas as pd
 from datetime import datetime, time, timedelta, date
 import calendar
 
-def calculate_attendance_metrics(df_logs, leaves_data, allowed_work_week, org_start, org_end, curr_year, curr_month):
+def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_start, org_end, curr_year, curr_month):
     """
     Processes logs and leaves data to calculate summary and sub-metrics for the dashboard.
+    Accepts work_days_count as a plain scalar integer (e.g. 5 or 6).
     """
     metrics = {
         "absents": 0, "on_leave": 0, "half_days": 0, "late_ins": 0,
@@ -67,15 +68,16 @@ def calculate_attendance_metrics(df_logs, leaves_data, allowed_work_week, org_st
                     metrics["approved_leave_days"].add(curr_step.day)
                 curr_step += timedelta(days=1)
             
-    # 3. Process Absent Days
-    # Only iterate up to the current day if looking at the active month
+    # 3. Process Absent Days using Scalar Work Week Integer Bounds
     max_day = now.day if (now.year == curr_year and now.month == curr_month) else calendar.monthrange(curr_year, curr_month)[1]
     
     for d in range(1, max_day + 1):
         check_dt = date(curr_year, curr_month, d)
-        mapped_db_day = (check_dt.weekday() + 1) % 7 # Map python weekday to system array format
+        # Python's weekday(): Monday is 1, Tuesday is 2 ... Saturday is 6, Sunday is 7
+        iso_weekday = check_dt.isoweekday()
         
-        if mapped_db_day in allowed_work_week:
+        # FIXED: Check if the day is within the working days range (e.g. 1 to 6 for a 6-day week)
+        if iso_weekday <= work_days_count:
             if d not in metrics["worked_days_set"] and d not in metrics["approved_leave_days"]: 
                 metrics["absents"] += 1
                 
