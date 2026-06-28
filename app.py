@@ -7,32 +7,6 @@ from database import supabase
 # Ensure this call remains at the absolute top of your script
 st.set_page_config(page_title="Corporate Kiosk", layout="centered") 
 
-# --- OVERRIDE SIDEBAR FILENAME DISPLAY ---
-# This safely overrides and resizes the text space to render "Mark Attendance" completely
-st.sidebar.markdown(
-    """
-    <style>
-        /* Select and update the target text containment element */
-        [data-testid="stSidebarNav"] ul li:first-child span {
-            visibility: hidden;
-            display: inline-block;
-            width: 100%;
-        }
-        [data-testid="stSidebarNav"] ul li:first-child span::after {
-            content: "Mark Attendance";
-            visibility: visible;
-            display: block;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: max-content;
-            font-weight: 500;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 def get_employee_by_pin(pin_code, org_id): 
     res = supabase.table("employees").select("*").eq("pin", pin_code).eq("organization_id", org_id).execute() 
     return res.data[0] if res.data else None 
@@ -41,8 +15,6 @@ st.title("🏢 Daily Attendance Marking Kiosk")
 st.subheader("Select Organization and Enter 4 digit Pin to Punch In")
 st.markdown("---") 
 
-# ... (the rest of your app.py execution logic remains unchanged)
-
 # Fetch Tenant Context
 org_res = supabase.table("organizations").select("id", "name").execute()
 org_options = {o['name']: o for o in org_res.data} if org_res.data else {}
@@ -50,10 +22,10 @@ org_options = {o['name']: o for o in org_res.data} if org_res.data else {}
 if not org_options:
     st.warning("No active corporate tenants found. Seed database setup tables.")
 else:
-    selected_org_name = st.selectbox("Select Organization Location", list(org_options.keys()))
+    selected_org_name = st.selectbox("Select Organization", list(org_options.keys()))
     org_data = org_options[selected_org_name]
     
-    pin_input = st.text_input("Enter 4-Digit Corporate Identity PIN", type="password")
+    pin_input = st.text_input("Enter 4-Digit Corporate PIN", type="password")
     
     if pin_input:
         emp = get_employee_by_pin(pin_input, org_data['id'])
