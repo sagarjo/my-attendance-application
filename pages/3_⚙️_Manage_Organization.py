@@ -20,17 +20,14 @@ with tab1:
     start_t = st.time_input("Global Operations Shift Start Time")
     end_t = st.time_input("Global Operations Shift Closure Time")
     
-    # New: Interactive Work Week Selection
+    # Updated: Simple Integer Work Week Selection
     st.write("**Operational Work Week Configuration**")
-    days_map = {
-        "Monday": 1, "Tuesday": 2, "Wednesday": 3, 
-        "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 0
-    }
-    
-    selected_days = st.multiselect(
-        "Select Operating Days for this Organization",
-        options=list(days_map.keys()),
-        default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    work_days_count = st.number_input(
+        "Number of Operational Days per Week (e.g., 6 for a 6-day work week)",
+        min_value=1,
+        max_value=7,
+        value=6,
+        step=1
     )
     
     if st.button("Register Corporate Structure"):
@@ -38,20 +35,13 @@ with tab1:
             st.error("Corporate ID Code must be exactly 3 alphabets.")
             st.stop()
             
-        if not selected_days:
-            st.error("Please choose at least one working day for the organization.")
-            st.stop()
-            
-        # Convert selected day strings into their corresponding database array integers
-        work_week_integers = [days_map[day] for day in selected_days]
-        roles_array = [r.strip() for r in roles_input.split(",") if r.strip()]
-        
         try:
+            # Passing work_days_count as a simple integer directly to the backend
             create_organization(
-                name, code, roles_array, lat, lng, radius, "UTC", 
-                start_t, end_t, work_week_integers
+                name, code, roles_array:=[r.strip() for r in roles_input.split(",") if r.strip()], 
+                lat, lng, radius, "UTC", start_t, end_t, work_days_count
             )
-            st.success(f"Organization Identity Registry established for: {name} ({code.upper()})")
+            st.success(f"Organization Identity Registry established for: {name} ({code.upper()}) with a {work_days_count}-day work week.")
         except Exception as e:
             st.error(f"Error saving to database: {e}")
 
@@ -76,4 +66,3 @@ with tab2:
             st.success(f"Employee Account for '{emp_name}' provisioned successfully inside organization structure.")
     else:
         st.info("Create an organization before attempting to register operations staff tracking metrics.")
-        
