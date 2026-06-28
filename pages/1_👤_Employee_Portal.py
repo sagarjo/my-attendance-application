@@ -8,10 +8,10 @@ from calendar_utils import calculate_attendance_metrics
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Polish Custom Dashboard Layout Styling
+# Modern Layout Styling Injection
 st.markdown("""
 <style>
-    /* Metric KPI Cards Layout */
+    /* Metric KPI Layout */
     .metric-container { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 16px; width: 100%; }
     .metric-card { flex: 1; min-width: 0; border-radius: 12px; padding: 10px 4px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
     .metric-val { font-size: 20px; font-weight: 700; margin-bottom: 1px; }
@@ -25,7 +25,7 @@ st.markdown("""
     .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 10px; }
 
-    /* Strict Mobile Table Calendar Override Format Matrix Rules */
+    /* HTML Table Matrix - Locks columns horizontally on tiny mobile displays */
     .mobile-table-calendar {
         width: 100% !important;
         border-collapse: separate !important;
@@ -141,7 +141,6 @@ if pin_input and pin_input == selected_emp['pin']:
     org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
     org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
     
-    # Calculate attendance logic values using our utilities layout module
     metrics = calculate_attendance_metrics(pd.DataFrame(logs_data), leaves_data, work_days_count, org_start, org_end, curr_year, curr_month)
 
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
@@ -168,7 +167,7 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # FIXED STRUCTURE: Generating calendar using an immutable HTML Table Matrix
+        # Build Table Matrix Calendar String
         html_calendar = '<table class="mobile-table-calendar"><thead><tr>'
         for weekday_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
             html_calendar += f'<th>{weekday_name}</th>'
@@ -185,7 +184,6 @@ if pin_input and pin_input == selected_emp['pin']:
                     cell_class = "cal-cell-inner cal-cell-today" if is_today else "cal-cell-inner"
                     lbl_color = "#000000" if is_today else "#111827"
                     
-                    # Status logic evaluation configuration
                     if day in metrics["worked_days_set"]:
                         status_html = '<span class="status-badge badge-present">PRESENT</span>'
                     elif day in metrics["approved_leave_days"]:
@@ -207,6 +205,8 @@ if pin_input and pin_input == selected_emp['pin']:
                     """
             html_calendar += '</tr>'
         html_calendar += '</tbody></table>'
+        
+        # RENDERING PORT: Renders explicit HTML components directly into raw page markup view safely
         st.markdown(html_calendar, unsafe_allow_html=True)
 
     with tab_apply:
