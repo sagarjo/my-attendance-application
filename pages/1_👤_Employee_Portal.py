@@ -8,7 +8,7 @@ from calendar_utils import calculate_attendance_metrics
 # Page Configuration
 st.set_page_config(page_title="Employee Portal", page_icon="👤", layout="wide")
 
-# Forced Mobile CSS Grid Overrides
+# Polish Custom Dashboard Layout Styling
 st.markdown("""
 <style>
     /* Metric KPI Cards Layout */
@@ -25,44 +25,50 @@ st.markdown("""
     .sub-metric-card .icon-val { font-size: 13px; font-weight: 700; color: #111827; }
     .sub-metric-card .label { color: #6B7280; font-size: 10px; }
 
-    /* CRITICAL FIXED GRID: Forces exactly 7 columns horizontally across all devices */
-    .calendar-widget-grid {
-        display: grid !important;
-        grid-template-columns: repeat(7, 1fr) !important;
-        gap: 4px !important;
+    /* Strict Mobile Table Calendar Override Format Matrix Rules */
+    .mobile-table-calendar {
         width: 100% !important;
-        text-align: center !important;
+        border-collapse: separate !important;
+        border-spacing: 4px !important;
+        table-layout: fixed !important;
         margin-top: 10px !important;
-        box-sizing: border-box !important;
     }
-    .cal-grid-header {
-        font-weight: 700 !important;
+    .mobile-table-calendar th {
         font-size: 10px !important;
+        font-weight: 700 !important;
         color: #4B5563 !important;
-        padding-bottom: 4px !important;
         text-transform: uppercase !important;
+        text-align: center !important;
+        padding-bottom: 6px !important;
+        width: 14.28% !important;
     }
-    .cal-grid-day-cell {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 6px !important;
-        padding: 4px 1px !important;
-        min-height: 48px !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-sizing: border-box !important;
+    .mobile-table-calendar td {
+        vertical-align: middle !important;
+        text-align: center !important;
+        padding: 0 !important;
+        width: 14.28% !important;
     }
-    .cal-grid-day-today {
+    .cal-cell-inner {
+        background-color: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 6px;
+        padding: 5px 1px;
+        min-height: 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+    .cal-cell-today {
         background-color: #00E5FF !important;
         border: 1.5px solid #111827 !important;
     }
-    .cal-grid-day-cell .num-lbl {
-        font-size: 12px !important;
-        font-weight: 700 !important;
-        color: #111827 !important;
-        display: block !important;
+    .cal-cell-inner .day-num {
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 2px;
+        display: block;
     }
     .status-badge {
         display: inline-block !important;
@@ -70,11 +76,11 @@ st.markdown("""
         font-size: 8px !important;
         font-weight: 800 !important;
         border-radius: 3px !important;
-        margin-top: 3px !important;
         width: 92% !important;
         text-align: center !important;
         text-transform: uppercase !important;
         box-sizing: border-box !important;
+        line-height: 1.1 !important;
     }
     .badge-present { background-color: #E6F4EA !important; color: #137333 !important; }
     .badge-absent { background-color: #FCE8E6 !important; color: #C5221F !important; }
@@ -86,7 +92,7 @@ st.markdown("""
 st.title("Attendance Portal")
 supabase = get_supabase_client()
 
-# --- Tenant Separation Context Filters ---
+# --- Multi-Tenant Fetch Configuration Block ---
 org_response = supabase.table("organizations").select("id, name, work_week, shift_start_time, shift_end_time").execute()
 orgs = org_response.data or []
 
@@ -135,7 +141,7 @@ if pin_input and pin_input == selected_emp['pin']:
     org_start = datetime.strptime(shift_start_str, "%H:%M:%S").time()
     org_end = datetime.strptime(shift_end_str, "%H:%M:%S").time()
     
-    # Calculate Data Points Metrics using our module
+    # Calculate attendance logic values using our utilities layout module
     metrics = calculate_attendance_metrics(pd.DataFrame(logs_data), leaves_data, work_days_count, org_start, org_end, curr_year, curr_month)
 
     tab_summary, tab_apply, tab_holidays = st.tabs(["Summary", "Apply Leaves", "Holidays"])
@@ -162,22 +168,24 @@ if pin_input and pin_input == selected_emp['pin']:
         st.markdown("---")
         st.subheader(f"📅 {calendar.month_name[curr_month]} {curr_year}")
         
-        # Build Grid Calendar using an absolute HTML string wrapper
-        html_calendar = '<div class="calendar-widget-grid">'
+        # FIXED STRUCTURE: Generating calendar using an immutable HTML Table Matrix
+        html_calendar = '<table class="mobile-table-calendar"><thead><tr>'
         for weekday_name in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]:
-            html_calendar += f'<div class="cal-grid-header">{weekday_name}</div>'
+            html_calendar += f'<th>{weekday_name}</th>'
+        html_calendar += '</tr></thead><tbody>'
             
         cal_matrix = calendar.monthcalendar(curr_year, curr_month)
         for week in cal_matrix:
+            html_calendar += '<tr>'
             for idx, day in enumerate(week):
                 if day == 0:
-                    html_calendar += '<div></div>'
+                    html_calendar += '<td></td>'
                 else:
                     is_today = (day == now.day)
-                    cell_class = "cal-grid-day-cell cal-grid-day-today" if is_today else "cal-grid-day-cell"
-                    text_color = "#000000" if is_today else "#111827"
+                    cell_class = "cal-cell-inner cal-cell-today" if is_today else "cal-cell-inner"
+                    lbl_color = "#000000" if is_today else "#111827"
                     
-                    # Status text badge generation tracking logic parameters
+                    # Status logic evaluation configuration
                     if day in metrics["worked_days_set"]:
                         status_html = '<span class="status-badge badge-present">PRESENT</span>'
                     elif day in metrics["approved_leave_days"]:
@@ -190,12 +198,15 @@ if pin_input and pin_input == selected_emp['pin']:
                         status_html = '<span class="status-badge" style="background:#F3F4F6;color:#9CA3AF;">—</span>'
                         
                     html_calendar += f"""
-                    <div class="{cell_class}">
-                        <span class="num-lbl" style="color:{text_color};">{day}</span>
-                        {status_html}
-                    </div>
+                    <td>
+                        <div class="{cell_class}">
+                            <span class="day-num" style="color:{lbl_color};">{day}</span>
+                            {status_html}
+                        </div>
+                    </td>
                     """
-        html_calendar += '</div>'
+            html_calendar += '</tr>'
+        html_calendar += '</tbody></table>'
         st.markdown(html_calendar, unsafe_allow_html=True)
 
     with tab_apply:
