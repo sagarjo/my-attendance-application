@@ -4,7 +4,7 @@ import calendar
 
 def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_start, org_end, curr_year, curr_month):
     """
-    Processes logs and leaves data to calculate summary and sub-metrics for the dashboard.
+    Computes summary card values and tracking sets for the visual grid.
     """
     metrics = {
         "absents": 0, "on_leave": 0, "half_days": 0, "late_ins": 0,
@@ -16,15 +16,13 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
     
     now = datetime.now()
     
-    # 1. Process Attendance Logs & Explicit Kiosk Actions
+    # 1. Process Logs & Punch Configurations
     if not df_logs.empty:
         df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True, errors='coerce')
         df_logs = df_logs.dropna(subset=['dt'])
         
         if not df_logs.empty:
             df_logs['date'] = df_logs['dt'].dt.date
-            
-            # Map structural logs separately based on explicit action strings
             metrics["worked_days_set"] = set(df_logs[df_logs['action'].isin(['IN', 'OUT'])]['dt'].dt.day.unique())
             metrics["week_offs_set"] = set(df_logs[df_logs['action'] == 'WEEK_OFF']['dt'].dt.day.unique())
             
@@ -56,7 +54,7 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
     metrics["total_wh"] = round(metrics["total_wh"], 2)
     metrics["deficit_hours"] = round(metrics["deficit_hours"], 1)
 
-    # 2. Process Leaves Data
+    # 2. Process Approved Leaves
     for lv in leaves_data:
         if lv.get('status') == 'Approved':
             lv_from = datetime.strptime(lv['from_date'], "%Y-%m-%d").date()
@@ -71,9 +69,8 @@ def calculate_attendance_metrics(df_logs, leaves_data, work_days_count, org_star
                     metrics["approved_leave_days"].add(curr_step.day)
                 curr_step += timedelta(days=1)
             
-    # 3. Process Absent Days
+    # 3. Calculate True Absents 
     max_day = now.day if (now.year == curr_year and now.month == curr_month) else calendar.monthrange(curr_year, curr_month)[1]
-    
     for d in range(1, max_day + 1):
         if d not in metrics["worked_days_set"] and d not in metrics["approved_leave_days"] and d not in metrics["week_offs_set"]: 
             metrics["absents"] += 1
