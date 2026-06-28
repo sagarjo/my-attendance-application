@@ -38,7 +38,7 @@ def get_employee_by_pin(pin_code, org_id):
     return res.data[0] if res.data else None 
 
 st.title("🏢 Daily Attendance Marking Kiosk")
-st.subheader("just select your organisation and enter secret pin to Punch In")
+st.subheader("Select Organization and Enter 4 digit Pin to Punch In")
 st.markdown("---") 
 
 # ... (the rest of your app.py execution logic remains unchanged)
