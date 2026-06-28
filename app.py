@@ -1,7 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from database import supabase  # Centralized multi-tenant client handle
+from database import supabase
 
 st.set_page_config(page_title="Corporate Kiosk Portal", layout="centered")
 
@@ -89,7 +89,6 @@ else:
             today_date = datetime.date.today()
             today_weekday = (today_date.weekday() + 1) % 7
             
-            # FIXED: Added missing .select("*") to provide valid query capabilities
             leave_res = supabase.table("leave_applications")\
                 .select("*")\
                 .eq("employee_id", emp['id'])\
@@ -105,6 +104,7 @@ else:
                 if is_locked_out:
                     st.error("❌ Attendance System Locked Out: You missed a valid Clock In on your last scheduled working shift. Get administrative sign-off first.")
                     if st.button("File Exception Report for Admin Review"):
+                        # This insert will pass seamlessly now once Step 1 SQL is run!
                         supabase.table("attendance_logs").insert({
                             "employee_id": emp['id'],
                             "timestamp": datetime.datetime.now().isoformat(),
@@ -128,6 +128,7 @@ else:
                         st.warning("🗓️ Operational Notice: Today is designated as a standard Week-Off.")
                         if not is_marked_weekoff:
                             if st.button("Formally Record Today as Week-Off in Logs"):
+                                # This insert will pass seamlessly now once Step 1 SQL is run!
                                 supabase.table("attendance_logs").insert({
                                     "employee_id": emp['id'],
                                     "timestamp": datetime.datetime.now().isoformat(),
