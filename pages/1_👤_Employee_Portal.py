@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
-from database import get_organizations, supabase  # Assuming standard connection layer
+from database import get_organizations, supabase
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 
 # --- Custom Mobile-Responsive CSS Flexbox/Grid System ---
+# FIXED: Changed 'unsafe_html=True' to 'unsafe_allow_html=True'
 st.markdown("""
 <style>
     .metric-container {
@@ -68,12 +69,11 @@ st.markdown("""
     .dot-weekoff { background-color: #555555; }
     .dot-absent { background-color: #ff3333; }
 </style>
-""", unsafe_html=True)
+""", unsafe_allow_html=True)
 
 st.title("👤 Corporate Employee Portal")
 
 # --- Context Initialization & Authentication Simulation ---
-# (In production, retrieve authenticated employee information from st.session_state)
 try:
     orgs = get_organizations()
 except:
@@ -87,8 +87,7 @@ org_map = {o['name']: o for o in orgs}
 selected_org = st.selectbox("Select Organization Context", list(org_map.keys()))
 active_org = org_map[selected_org]
 
-# Fetch integer work week configuration safely
-# Default to 6 if column mapping fails or is empty
+# Fetch integer work week configuration safely (Default to 6-day work week)
 work_days_allowed_count = int(active_org.get('work_week', 6)) 
 
 # Employee Selection
@@ -130,11 +129,9 @@ if not df_logs.empty:
     df_logs['dt'] = pd.to_datetime(df_logs['timestamp'], utc=True)
     df_logs['date_str'] = df_logs['dt'].dt.strftime('%Y-%m-%d')
     
-    # Isolate normal punches vs manual week-off logs
     worked_dates = set(df_logs[df_logs['action'].isin(['IN', 'OUT'])]['date_str'].unique())
     week_off_dates = set(df_logs[df_logs['action'] == 'WEEK_OFF']['date_str'].unique())
 
-# Parse approved leave dates range
 leave_dates = set()
 for l in approved_leaves:
     start_d = datetime.strptime(l['from_date'], '%Y-%m-%d').date()
@@ -144,7 +141,7 @@ for l in approved_leaves:
         leave_dates.add(curr.strftime('%Y-%m-%d'))
         curr += timedelta(days=1)
 
-# --- 🔄 Updated Core Logic: Compute Absent Days using simple scalar integer count ---
+# --- Compute Absent Days using scalar integer logic ---
 absent_count = 0
 total_days_in_month_to_date = now.day
 calendar_days_data = {}
@@ -155,9 +152,6 @@ for day in range(1, total_days_in_month_to_date + 1):
     
     # ISO weekday: Monday = 1, Tuesday = 2, ..., Saturday = 6, Sunday = 7
     iso_weekday = check_date.isoweekday()
-    
-    # Check if this day falls within the organization's working week number boundary.
-    # If work_days_allowed_count is 6, days 1 to 6 (Mon-Sat) are working days. Sunday (7) is off.
     is_scheduled_workday = iso_weekday <= work_days_allowed_count
     
     status = "Absent"
@@ -168,7 +162,6 @@ for day in range(1, total_days_in_month_to_date + 1):
     elif date_str in week_off_dates or not is_scheduled_workday:
         status = "Week Off"
     else:
-        # Scheduled shift with no tracking footprint = Absent
         absent_count += 1
         
     calendar_days_data[day] = status
@@ -194,27 +187,22 @@ st.markdown(f"""
         <div class="metric-label">Work Week</div>
     </div>
 </div>
-""", unsafe_html=True)
+""", unsafe_allow_html=True)
 
 # --- Render Calendar Status Matrix ---
 st.subheader("🗓️ Operational Attendance Grid")
 
-# Pad start of month weeks headers 
 days_headers = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 cols = st.columns(7)
 for idx, header in enumerate(days_headers):
-    cols[idx].markdown(f'<div class="calendar-day-header">{header}</div>', unsafe_html=True)
+    cols[idx].markdown(f'<div class="calendar-day-header">{header}</div>', unsafe_allow_html=True)
 
-first_day_weekday = start_of_month.isoweekday() # 1 = Mon, 7 = Sun
-
-# Build out visual grid mapping layout
+first_day_weekday = start_of_month.isoweekday()
 grid_html = '<div class="calendar-grid">'
 
-# Blank blocks for previous month padding
 for _ in range(first_day_weekday - 1):
     grid_html += '<div style="visibility: hidden;"></div>'
 
-# Populating month matrix days 
 for day in range(1, total_days_in_month_to_date + 1):
     day_status = calendar_days_data[day]
     
@@ -235,4 +223,4 @@ for day in range(1, total_days_in_month_to_date + 1):
     """
 
 grid_html += "</div>"
-st.markdown(grid_html, unsafe_html=True)
+st.markdown(grid_html, unsafe_allow_html=True)
